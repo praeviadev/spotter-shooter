@@ -1,0 +1,3363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spotter-Shooter // Platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;600;700;800&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+
+  :root {
+    --bg: #0a0c0e;
+    --surface: #111416;
+    --surface2: #181c1f;
+    --border: #252b30;
+    --border-active: #3a4a52;
+    --amber: #e8a427;
+    --amber-dim: #a06b10;
+    --amber-glow: rgba(232,164,39,0.12);
+    --green: #4caf6f;
+    --green-dim: #2d6b42;
+    --red: #d9534f;
+    --red-dim: #7a1f1d;
+    --blue: #4a9eca;
+    --text: #c8d4da;
+    --text-dim: #6a8090;
+    --text-muted: #3a4e58;
+    --mono: 'Share Tech Mono', monospace;
+    --display: 'Barlow Condensed', sans-serif;
+    --body: 'Barlow', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--body);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* ── HEADER ── */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 40px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+  .logo-mark {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 20px;
+    letter-spacing: 0.08em;
+    color: var(--amber);
+    text-transform: uppercase;
+  }
+  .logo-sep { color: var(--text-muted); margin: 0 2px; }
+  .logo-sub {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+  .sys-badge {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .dot.green { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
+  .dot.red { background: var(--red); }
+  .dot.amber { background: var(--amber); box-shadow: 0 0 6px var(--amber); animation: pulse 2s infinite; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  /* ── STEP RAIL ── */
+  .step-rail {
+    display: flex;
+    align-items: stretch;
+    padding: 0 40px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+  }
+
+  .step-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 20px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    white-space: nowrap;
+    position: relative;
+  }
+  .step-item:hover { background: rgba(232,164,39,0.04); }
+  .step-item.active { border-bottom-color: var(--amber); }
+  .step-item.done .step-num { background: var(--green); color: #000; }
+  .step-item.active .step-num { background: var(--amber); color: #000; }
+
+  .step-num {
+    width: 22px; height: 22px;
+    border-radius: 2px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    flex-shrink: 0;
+    transition: all 0.2s;
+  }
+  .step-label {
+    font-family: var(--display);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  .step-item.active .step-label { color: var(--amber); }
+  .step-item.done .step-label { color: var(--green); }
+
+  /* ── MAIN LAYOUT ── */
+  .main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 40px;
+  }
+
+  .step-panel { display: none; }
+  .step-panel.active { display: block; animation: fadeIn 0.3s ease; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── HEADINGS ── */
+  .step-heading {
+    margin-bottom: 32px;
+  }
+  .step-eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    color: var(--amber-dim);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .step-title {
+    font-family: var(--display);
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    line-height: 1;
+    color: #e8edf0;
+  }
+  .step-desc {
+    margin-top: 10px;
+    font-size: 14px;
+    color: var(--text-dim);
+    line-height: 1.6;
+    max-width: 600px;
+  }
+
+  /* ── CARDS / PANELS ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+  .card-title {
+    font-family: var(--display);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-title::before {
+    content: '';
+    display: block;
+    width: 3px; height: 14px;
+    background: var(--amber);
+    border-radius: 1px;
+  }
+
+  /* ── STATUS GRID ── */
+  .status-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+  }
+  .status-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 13px;
+    transition: border-color 0.2s;
+  }
+  .status-item:hover { border-color: var(--border-active); }
+  .status-name { color: var(--text); }
+  .status-val {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    padding: 2px 8px;
+    border-radius: 2px;
+    text-transform: uppercase;
+  }
+  .status-val.online { background: rgba(76,175,111,0.15); color: var(--green); border: 1px solid var(--green-dim); }
+  .status-val.offline { background: rgba(217,83,79,0.15); color: var(--red); border: 1px solid var(--red-dim); }
+  .status-val.checking { background: rgba(232,164,39,0.1); color: var(--amber); border: 1px solid var(--amber-dim); animation: blink 1s step-end infinite; }
+
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* ── BUTTONS ── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 28px;
+    font-family: var(--display);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    border: none;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-primary {
+    background: var(--amber);
+    color: #0a0c0e;
+  }
+  .btn-primary:hover { background: #f5b840; box-shadow: 0 0 20px rgba(232,164,39,0.3); }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--amber);
+    border: 1px solid var(--amber-dim);
+  }
+  .btn-secondary:hover { background: var(--amber-glow); border-color: var(--amber); }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+  }
+  .btn-ghost:hover { border-color: var(--border-active); color: var(--text); }
+
+  .btn-danger {
+    background: transparent;
+    color: var(--red);
+    border: 1px solid var(--red-dim);
+    padding: 6px 14px;
+    font-size: 12px;
+  }
+  .btn-danger:hover { background: rgba(217,83,79,0.1); }
+
+  .btn-launch {
+    background: var(--green);
+    color: #000;
+    padding: 16px 48px;
+    font-size: 16px;
+  }
+  .btn-launch:hover { background: #5dc97d; box-shadow: 0 0 30px rgba(76,175,111,0.4); }
+
+  .btn-row {
+    display: flex;
+    gap: 12px;
+    margin-top: 28px;
+    align-items: center;
+  }
+
+  /* ── FORM ELEMENTS ── */
+  .form-group { margin-bottom: 16px; }
+  .form-label {
+    display: block;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .form-input, .form-select {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 10px 14px;
+    outline: none;
+    transition: border-color 0.2s;
+    appearance: none;
+  }
+  .form-input:focus, .form-select:focus { border-color: var(--amber); box-shadow: 0 0 0 2px var(--amber-glow); }
+  .form-input::placeholder { color: var(--text-muted); }
+
+  .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .form-row-3 {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: 16px;
+  }
+
+  /* ── FILE DROP ── */
+  .drop-zone {
+    border: 1px dashed var(--border-active);
+    border-radius: 3px;
+    padding: 32px;
+    text-align: center;
+    background: var(--surface2);
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-bottom: 20px;
+  }
+  .drop-zone:hover {
+    border-color: var(--amber-dim);
+    background: var(--amber-glow);
+  }
+  .drop-icon { font-size: 28px; margin-bottom: 10px; }
+  .drop-label {
+    font-family: var(--display);
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+  .drop-sub { font-size: 12px; color: var(--text-muted); }
+
+  /* ── FILE TABLE ── */
+  .file-table { width: 100%; border-collapse: collapse; }
+  .file-table th {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .file-table td {
+    padding: 10px 12px;
+    font-family: var(--mono);
+    font-size: 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  .file-table tr:last-child td { border-bottom: none; }
+  .file-table tr:hover td { background: rgba(255,255,255,0.02); }
+  .tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 2px;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .tag-yes { background: rgba(76,175,111,0.15); color: var(--green); border: 1px solid var(--green-dim); }
+  .tag-pending { background: rgba(232,164,39,0.1); color: var(--amber); border: 1px solid var(--amber-dim); }
+  .tag-no { background: rgba(255,255,255,0.05); color: var(--text-muted); border: 1px solid var(--border); }
+
+  /* ── TELEMETRY PROVIDERS ── */
+  .provider-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .provider-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 20px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .provider-card:hover { border-color: var(--border-active); }
+  .provider-card.selected { border-color: var(--amber); background: var(--amber-glow); }
+  .provider-icon { font-size: 24px; margin-bottom: 8px; }
+  .provider-name {
+    font-family: var(--display);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  .provider-card.selected .provider-name { color: var(--amber); }
+
+  /* ── DETECTION RESULTS ── */
+  .detect-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
+  .detect-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 12px 16px;
+    font-family: var(--mono);
+    font-size: 13px;
+  }
+  .detect-name { color: var(--text); }
+  .detect-count { color: var(--text-dim); font-size: 11px; margin-left: 16px; }
+
+  .rec-box {
+    background: var(--surface2);
+    border: 1px solid var(--amber-dim);
+    border-left: 3px solid var(--amber);
+    border-radius: 2px;
+    padding: 16px 20px;
+    margin-top: 16px;
+  }
+  .rec-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--amber);
+    margin-bottom: 6px;
+  }
+  .rec-text { font-size: 13px; color: var(--text); line-height: 1.5; }
+  .rec-reason { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+
+  /* ── AGENT TASKS ── */
+  .agent-grid { display: flex; flex-direction: column; gap: 8px; }
+  .agent-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .agent-item:hover { border-color: var(--border-active); }
+  .agent-item.selected { border-color: var(--green-dim); background: rgba(76,175,111,0.05); }
+
+  .agent-check {
+    width: 20px; height: 20px;
+    border-radius: 2px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px;
+    flex-shrink: 0;
+    transition: all 0.2s;
+  }
+  .agent-item.selected .agent-check {
+    background: var(--green);
+    border-color: var(--green);
+    color: #000;
+  }
+  .agent-info { flex: 1; }
+  .agent-name {
+    font-family: var(--display);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text);
+    margin-bottom: 2px;
+  }
+  .agent-desc { font-size: 12px; color: var(--text-dim); }
+  .agent-badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 2px;
+  }
+  .badge-default { background: rgba(232,164,39,0.1); color: var(--amber); border: 1px solid var(--amber-dim); }
+  .badge-optional { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
+
+  .warn-box {
+    background: rgba(217,83,79,0.07);
+    border: 1px solid var(--red-dim);
+    border-left: 3px solid var(--red);
+    border-radius: 2px;
+    padding: 14px 18px;
+    margin-top: 16px;
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+  .warn-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--red);
+    margin-bottom: 4px;
+  }
+
+  /* ── REVIEW ── */
+  .review-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .review-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 18px;
+  }
+  .review-key {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+  .review-val {
+    font-family: var(--display);
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--text);
+  }
+  .review-val.highlight { color: var(--amber); }
+  .review-val.green { color: var(--green); }
+
+  /* ── MODEL PROVIDERS ── */
+  .model-provider-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+
+  /* ── CONNECTION RESULT ── */
+  .conn-result {
+    background: var(--surface2);
+    border: 1px solid var(--green-dim);
+    border-radius: 2px;
+    padding: 14px 18px;
+    margin-top: 14px;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  .conn-result-head { color: var(--green); margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+  .index-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .index-tag {
+    background: rgba(74,158,202,0.1);
+    border: 1px solid rgba(74,158,202,0.3);
+    color: var(--blue);
+    padding: 2px 10px;
+    border-radius: 2px;
+    font-size: 11px;
+  }
+
+  /* ── DIVIDER ── */
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 28px 0;
+  }
+  .divider-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin: 20px 0 14px;
+  }
+
+  /* ── TOGGLE ── */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    margin-bottom: 8px;
+  }
+  .toggle-label { font-size: 13px; color: var(--text); }
+  .toggle-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+  .toggle {
+    position: relative;
+    width: 40px; height: 22px;
+    cursor: pointer;
+  }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider {
+    position: absolute;
+    inset: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    transition: 0.2s;
+  }
+  .toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 16px; height: 14px;
+    left: 2px; top: 2px;
+    background: var(--text-muted);
+    border-radius: 1px;
+    transition: 0.2s;
+  }
+  .toggle input:checked + .toggle-slider { background: rgba(76,175,111,0.2); border-color: var(--green-dim); }
+  .toggle input:checked + .toggle-slider::before { transform: translateX(18px); background: var(--green); }
+
+  /* ── SCROLL AREA ── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ── WELCOME HERO ── */
+  .hero {
+    text-align: center;
+    padding: 60px 0 40px;
+  }
+  .hero-badge {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--amber);
+    border: 1px solid var(--amber-dim);
+    padding: 4px 14px;
+    border-radius: 2px;
+    margin-bottom: 20px;
+  }
+  .hero-title {
+    font-family: var(--display);
+    font-size: 52px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    line-height: 1;
+    color: #e8edf0;
+    margin-bottom: 14px;
+  }
+  .hero-title span { color: var(--amber); }
+  .hero-sub {
+    font-size: 15px;
+    color: var(--text-dim);
+    max-width: 480px;
+    margin: 0 auto 40px;
+    line-height: 1.6;
+  }
+
+  /* ── PROGRESS ── */
+  .progress-track {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    height: 4px;
+    margin-bottom: 32px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--amber-dim), var(--amber));
+    border-radius: 2px;
+    transition: width 0.4s ease;
+  }
+
+  /* ── SELECT OVERRIDE ── */
+  .form-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236a8090' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+  }
+
+  /* ── SEPARATOR ── */
+  .section-sep {
+    height: 1px;
+    background: linear-gradient(90deg, var(--amber-dim), transparent);
+    margin: 12px 0 24px;
+    opacity: 0.4;
+  }
+
+
+:root {
+  --bg: #0a0c0e;
+  --surface: #111416;
+  --surface2: #181c1f;
+  --surface3: #1e2327;
+  --border: #252b30;
+  --border-active: #3a4a52;
+  --amber: #e8a427;
+  --amber-dim: #a06b10;
+  --amber-glow: rgba(232,164,39,0.10);
+  --green: #4caf6f;
+  --green-dim: #2d6b42;
+  --green-glow: rgba(76,175,111,0.10);
+  --red: #d9534f;
+  --red-dim: #7a1f1d;
+  --red-glow: rgba(217,83,79,0.10);
+  --blue: #4a9eca;
+  --blue-dim: #1f4a6a;
+  --blue-glow: rgba(74,158,202,0.10);
+  --purple: #9b72cf;
+  --text: #c8d4da;
+  --text-dim: #6a8090;
+  --text-muted: #3a4e58;
+  --mono: 'Share Tech Mono', monospace;
+  --display: 'Barlow Condensed', sans-serif;
+  --body: 'Barlow', sans-serif;
+  --critical: #ff4444;
+  --high: #e8a427;
+  --medium: #4a9eca;
+  --low: #4caf6f;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--body);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.06) 2px, rgba(0,0,0,0.06) 4px);
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* ══════════════════════════════
+   HEADER
+══════════════════════════════ */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px;
+  height: 52px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  flex-shrink: 0;
+}
+
+.logo {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.logo-mark {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: 0.08em;
+  color: var(--amber);
+  text-transform: uppercase;
+}
+.logo-sep { color: var(--text-muted); }
+.logo-sub {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.header-center {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 4px;
+}
+
+.role-btn {
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 6px 22px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-radius: 1px;
+  transition: all 0.2s;
+}
+.role-btn:hover { color: var(--text); }
+.role-btn.active {
+  background: var(--amber);
+  color: #0a0c0e;
+}
+.role-btn.active.commander-role {
+  background: var(--blue);
+  color: #0a0c0e;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.live-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--green);
+  text-transform: uppercase;
+}
+.dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+}
+.dot.green { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
+.dot.red { background: var(--red); }
+.dot.amber { background: var(--amber); animation: pulse 2s infinite; }
+
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+.hunt-name {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.1em;
+}
+
+/* ══════════════════════════════
+   VIEW CONTAINERS
+══════════════════════════════ */
+.view { display: none; height: calc(100vh - 52px); }
+.view.active { display: flex; flex-direction: column; animation: fadeIn 0.25s ease; }
+
+@keyframes fadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+
+/* ══════════════════════════════
+   ██████  ANALYST VIEW
+══════════════════════════════ */
+#analystView {
+  flex-direction: row;
+  overflow: hidden;
+}
+
+/* ── Left: Event List ── */
+.event-list-panel {
+  width: 420px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel-toolbar {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.toolbar-title {
+  font-family: var(--display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.toolbar-count {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--amber);
+  background: var(--amber-glow);
+  border: 1px solid var(--amber-dim);
+  padding: 2px 8px;
+  border-radius: 2px;
+}
+
+.filter-bar {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.filter-chip {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.filter-chip:hover { border-color: var(--border-active); color: var(--text); }
+.filter-chip.active { background: var(--surface3); border-color: var(--amber-dim); color: var(--amber); }
+.filter-chip.crit { border-color: var(--red-dim); color: var(--red); background: var(--red-glow); }
+.filter-chip.high-f { border-color: var(--amber-dim); color: var(--amber); background: var(--amber-glow); }
+
+.event-list-scroll {
+  overflow-y: auto;
+  flex: 1;
+}
+
+.event-row {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.15s;
+  position: relative;
+}
+.event-row::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+}
+.event-row.crit::before { background: var(--critical); }
+.event-row.high::before { background: var(--high); }
+.event-row.medium::before { background: var(--medium); }
+.event-row.low::before { background: var(--low); }
+
+.event-row:hover { background: rgba(255,255,255,0.02); }
+.event-row.selected { background: var(--surface2); }
+.event-row.selected::after {
+  content: '';
+  position: absolute;
+  right: 0; top: 0; bottom: 0;
+  width: 2px;
+  background: var(--amber);
+}
+
+.event-row-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 5px;
+}
+
+.event-title {
+  font-family: var(--display);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-right: 10px;
+}
+
+.sev-badge {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+.sev-badge.crit { background: rgba(255,68,68,0.15); color: var(--critical); border: 1px solid rgba(255,68,68,0.3); }
+.sev-badge.high { background: var(--amber-glow); color: var(--amber); border: 1px solid var(--amber-dim); }
+.sev-badge.medium { background: var(--blue-glow); color: var(--blue); border: 1px solid var(--blue-dim); }
+.sev-badge.low { background: var(--green-glow); color: var(--green); border: 1px solid var(--green-dim); }
+
+.event-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.event-agent { color: var(--text-dim); }
+.event-time { margin-left: auto; }
+
+.event-snippet {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 5px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.new-indicator {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 5px var(--amber);
+  margin-right: 6px;
+  vertical-align: middle;
+  animation: pulse 1.5s infinite;
+}
+
+/* ── Right: Detail Panel ── */
+.event-detail-panel {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+
+.detail-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-muted);
+}
+.detail-empty-icon { font-size: 32px; opacity: 0.3; }
+.detail-empty-text {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.detail-content { padding: 24px 28px; display: none; }
+.detail-content.visible { display: block; }
+
+.detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  gap: 20px;
+}
+
+.detail-title-block { flex: 1; }
+.detail-eyebrow {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.detail-title {
+  font-family: var(--display);
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #e8edf0;
+  line-height: 1.1;
+}
+
+.detail-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 18px;
+  font-family: var(--display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-escalate {
+  background: var(--amber);
+  color: #0a0c0e;
+}
+.btn-escalate:hover { background: #f5b840; box-shadow: 0 0 16px rgba(232,164,39,0.3); }
+.btn-dismiss {
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+.btn-dismiss:hover { border-color: var(--red-dim); color: var(--red); }
+.btn-expand {
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  padding: 9px 14px;
+}
+.btn-expand:hover { border-color: var(--border-active); color: var(--text); }
+
+.detail-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 18px 0;
+}
+
+/* Detail sections */
+.detail-section { margin-bottom: 20px; }
+.detail-section-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.detail-section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.detail-text {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.65;
+}
+
+.detail-kv-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.detail-kv {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 10px 12px;
+}
+.detail-kv-key {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.detail-kv-val {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  word-break: break-all;
+}
+.detail-kv-val.highlight { color: var(--amber); }
+.detail-kv-val.danger { color: var(--red); }
+.detail-kv-val.ok { color: var(--green); }
+
+.enrichment-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.enrich-tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  padding: 4px 10px;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  background: var(--surface2);
+}
+.enrich-tag.ioc { border-color: var(--red-dim); color: var(--red); background: var(--red-glow); }
+.enrich-tag.context { border-color: var(--blue-dim); color: var(--blue); background: var(--blue-glow); }
+.enrich-tag.intel { border-color: var(--purple); color: var(--purple); background: rgba(155,114,207,0.08); }
+
+.next-question {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--amber);
+  border-radius: 2px;
+  padding: 14px 16px;
+}
+.next-q-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--amber-dim);
+  margin-bottom: 6px;
+}
+.next-q-text {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.5;
+  font-style: italic;
+}
+
+.log-snippet {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 14px 16px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.7;
+  overflow-x: auto;
+  display: none;
+}
+.log-snippet.visible { display: block; }
+.log-key { color: var(--blue); }
+.log-val { color: var(--green); }
+.log-str { color: var(--amber); }
+
+/* ── Bottom Action Bar ── */
+.analyst-bottom {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  padding: 10px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.bottom-stats {
+  display: flex;
+  gap: 24px;
+}
+.bottom-stat {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.bottom-stat-val { color: var(--text-dim); }
+.bottom-stat-val.amber { color: var(--amber); }
+.bottom-stat-val.red { color: var(--red); }
+.bottom-stat-val.green { color: var(--green); }
+
+.cases-drawer-btn {
+  font-family: var(--display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 7px 16px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cases-drawer-btn:hover { border-color: var(--border-active); color: var(--text); }
+.case-count-pill {
+  background: var(--blue);
+  color: #000;
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 1px;
+}
+
+/* ── Cases Drawer ── */
+.cases-drawer {
+  position: fixed;
+  bottom: 0; right: 0;
+  width: 480px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 3px 3px 0 0;
+  transform: translateY(100%);
+  transition: transform 0.3s ease;
+  z-index: 150;
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+}
+.cases-drawer.open { transform: translateY(0); }
+
+.drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.drawer-title {
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  display: flex; align-items: center; gap: 8px;
+}
+.drawer-title::before { content:''; display:block; width:3px; height:14px; background:var(--blue); border-radius:1px; }
+.drawer-close {
+  background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 18px; padding: 0 4px;
+  transition: color 0.15s;
+}
+.drawer-close:hover { color: var(--text); }
+.drawer-body { overflow-y: auto; flex: 1; }
+
+.case-row {
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  transition: background 0.15s;
+}
+.case-row:hover { background: rgba(255,255,255,0.02); }
+
+.case-id {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  width: 72px;
+}
+.case-name {
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text);
+  flex: 1;
+}
+.case-status {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 2px;
+}
+.case-status.open { background: var(--blue-glow); color: var(--blue); border: 1px solid var(--blue-dim); }
+.case-status.review { background: var(--amber-glow); color: var(--amber); border: 1px solid var(--amber-dim); }
+.case-status.closed { background: var(--green-glow); color: var(--green); border: 1px solid var(--green-dim); }
+
+/* ══════════════════════════════
+   ██████  COMMANDER VIEW
+══════════════════════════════ */
+#commanderView {
+  flex-direction: column;
+  overflow-y: auto;
+  background: var(--bg);
+}
+
+.cmd-header-bar {
+  padding: 20px 32px 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.cmd-title {
+  font-family: var(--display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.cmd-hunt {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.cmd-timestamp {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.cmd-body { padding: 20px 32px 32px; }
+
+/* Big KPI row */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.kpi-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 20px 20px 18px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+.kpi-card:hover { border-color: var(--border-active); }
+.kpi-card::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 2px;
+}
+.kpi-card.amber-accent::after { background: var(--amber); }
+.kpi-card.blue-accent::after { background: var(--blue); }
+.kpi-card.green-accent::after { background: var(--green); }
+.kpi-card.red-accent::after { background: var(--red); }
+.kpi-card.purple-accent::after { background: var(--purple); }
+
+.kpi-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+.kpi-value {
+  font-family: var(--display);
+  font-size: 44px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  color: #e8edf0;
+}
+.kpi-value.amber { color: var(--amber); }
+.kpi-value.blue { color: var(--blue); }
+.kpi-value.green { color: var(--green); }
+.kpi-value.red { color: var(--red); }
+.kpi-value.purple { color: var(--purple); }
+
+.kpi-sub {
+  margin-top: 8px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.kpi-delta { font-size: 10px; }
+.kpi-delta.up { color: var(--red); }
+.kpi-delta.dn { color: var(--green); }
+
+/* Two-column layout */
+.cmd-grid {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.cmd-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.cmd-card-header {
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface2);
+}
+.cmd-card-title {
+  font-family: var(--display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  display: flex; align-items: center; gap: 8px;
+}
+.cmd-card-title::before { content:''; display:block; width:3px; height:12px; border-radius:1px; }
+.cmd-card-title.amber-bar::before { background: var(--amber); }
+.cmd-card-title.blue-bar::before { background: var(--blue); }
+.cmd-card-title.green-bar::before { background: var(--green); }
+.cmd-card-title.red-bar::before { background: var(--red); }
+.cmd-card-body { padding: 0; }
+
+/* ASOM progress */
+.asom-line-list { padding: 4px 0; }
+.asom-line-row {
+  display: flex;
+  align-items: center;
+  padding: 11px 18px;
+  border-bottom: 1px solid var(--border);
+  gap: 14px;
+  transition: background 0.15s;
+}
+.asom-line-row:last-child { border-bottom: none; }
+.asom-line-row:hover { background: rgba(255,255,255,0.015); }
+
+.asom-num {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  width: 28px;
+  flex-shrink: 0;
+}
+.asom-text {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.4;
+}
+.asom-status {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.asom-status.done { background: var(--green-glow); color: var(--green); border: 1px solid var(--green-dim); }
+.asom-status.active { background: var(--amber-glow); color: var(--amber); border: 1px solid var(--amber-dim); animation: blink 1.5s step-end infinite; }
+.asom-status.pending { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
+
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+/* Threat actors */
+.actor-list { padding: 4px 0; }
+.actor-row {
+  display: flex;
+  align-items: center;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+  transition: background 0.15s;
+}
+.actor-row:last-child { border-bottom: none; }
+.actor-row:hover { background: rgba(255,255,255,0.015); }
+
+.actor-icon {
+  width: 32px; height: 32px;
+  background: var(--red-glow);
+  border: 1px solid var(--red-dim);
+  border-radius: 2px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.actor-name {
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+.actor-detail {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.actor-conf {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--red);
+  flex-shrink: 0;
+}
+
+/* Agent activity feed */
+.agent-feed { padding: 4px 0; max-height: 340px; overflow-y: auto; }
+.feed-row {
+  display: flex;
+  align-items: flex-start;
+  padding: 10px 18px;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s;
+}
+.feed-row:last-child { border-bottom: none; }
+.feed-row:hover { background: rgba(255,255,255,0.015); }
+
+.feed-time {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  width: 52px;
+  padding-top: 2px;
+}
+.feed-dot-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  width: 12px;
+  padding-top: 5px;
+}
+.feed-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.feed-line { flex: 1; width: 1px; background: var(--border); margin-top: 3px; }
+.feed-dot.green { background: var(--green); box-shadow: 0 0 5px var(--green); }
+.feed-dot.amber { background: var(--amber); box-shadow: 0 0 5px var(--amber); }
+.feed-dot.blue { background: var(--blue); }
+.feed-dot.red { background: var(--red); box-shadow: 0 0 5px var(--red); }
+
+.feed-body { flex: 1; }
+.feed-agent {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 3px;
+}
+.feed-text {
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.4;
+}
+.feed-tag {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 1px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* Events table */
+.events-table { width: 100%; border-collapse: collapse; }
+.events-table th {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-align: left;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+}
+.events-table td {
+  padding: 11px 18px;
+  font-family: var(--mono);
+  font-size: 11px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-dim);
+}
+.events-table tr:last-child td { border-bottom: none; }
+.events-table tr:hover td { background: rgba(255,255,255,0.015); }
+.events-table td:first-child { color: var(--text); font-size: 12px; }
+
+/* Analyst status row */
+.analyst-status-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.analyst-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.analyst-avatar {
+  width: 36px; height: 36px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--display);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+.analyst-name {
+  font-family: var(--display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+.analyst-load {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.analyst-status-dot {
+  margin-left: auto;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+
+/* ── UNIFIED SCREENS ── */
+.screen { display: none; }
+.screen.active { display: block; }
+
+/* Deploy screen — normal document scroll */
+#deployScreen.active {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* Ops screen — fixed full-height layout, no page scroll */
+#opsScreen.active {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+}
+html, body { height: 100%; }
+
+/* ── LAUNCH OVERLAY ── */
+#launchOverlay {
+  display: none; position: fixed; inset: 0;
+  background: #0a0c0e; z-index: 900;
+  flex-direction: column; align-items: center; justify-content: center; gap: 0;
+}
+#launchOverlay.lo-show { display: flex; }
+.lo-line {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 12px; letter-spacing: 0.12em; color: #4caf6f;
+  text-transform: uppercase; margin: 3px 0; opacity: 0;
+  transition: opacity 0.3s; width: 460px; display: flex; align-items: center; gap: 10px;
+}
+.lo-line.los { opacity: 1; }
+.lo-line::before { content: '>'; color: #e8a427; flex-shrink: 0; }
+.lo-line.lo-final { color: #e8a427; }
+.lo-big {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 64px; font-weight: 800; letter-spacing: 0.06em;
+  text-transform: uppercase; color: #e8edf0;
+  margin: 32px 0 10px; opacity: 0; transform: translateY(12px);
+  transition: opacity 0.5s, transform 0.5s;
+}
+.lo-big.los { opacity: 1; transform: translateY(0); }
+.lo-big span { color: #4caf6f; }
+.lo-sub {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 12px; color: #6a8090; letter-spacing: 0.1em;
+  margin-bottom: 36px; opacity: 0; transition: opacity 0.4s 0.2s;
+}
+.lo-sub.los { opacity: 1; }
+.lo-btns { display: flex; gap: 16px; opacity: 0; transition: opacity 0.4s 0.3s; }
+.lo-btns.los { opacity: 1; }
+.lo-btn-a { background: #e8a427; color: #0a0c0e; padding: 14px 36px; font-size: 15px; }
+.lo-btn-a:hover { background: #f5b840; box-shadow: 0 0 20px rgba(232,164,39,0.35); }
+.lo-btn-c { background: transparent; color: #4a9eca; border: 1px solid #1f4a6a; padding: 14px 36px; font-size: 15px; }
+.lo-btn-c:hover { background: rgba(74,158,202,0.10); border-color: #4a9eca; }
+
+/* ── OPS HEADER ADDITIONS ── */
+.admin-link {
+  font-family: 'Share Tech Mono', monospace; font-size: 10px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: #3a4e58; background: none;
+  border: 1px solid #252b30; padding: 4px 10px; border-radius: 2px; cursor: pointer; transition: all 0.2s;
+}
+.admin-link:hover { color: #6a8090; border-color: #3a4a52; }
+.role-switcher { display: flex; align-items: center; gap: 4px; background: #181c1f; border: 1px solid #252b30; border-radius: 2px; padding: 4px; }
+.role-btn { font-family: 'Barlow Condensed', sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 6px 20px; border: none; background: transparent; color: #6a8090; cursor: pointer; border-radius: 1px; transition: all 0.2s; }
+.role-btn:hover { color: #c8d4da; }
+.role-btn.ra { background: #e8a427; color: #0a0c0e; }
+.role-btn.rc { background: #4a9eca; color: #0a0c0e; }
+.header-meta { display: flex; align-items: center; gap: 18px; }
+.header-tag { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: #3a4e58; letter-spacing: 0.08em; }
+
+/* ── OPS VIEWS ── */
+.ops-view { display: none; flex: 1; overflow: hidden; }
+.ops-view.ova { display: flex; animation: fadeIn 0.25s ease; }
+#commanderView { flex-direction: column; overflow-y: auto; }
+@keyframes fadeIn { from{opacity:0} to{opacity:1} }
+
+/* deploy scroll must flex */
+#deployScreen { background: #0a0c0e; }
+.deploy-scroll { flex: 1; }
+
+/* ops bottom bar fix */
+.abar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface); border-top: 1px solid var(--border); padding: 10px 28px; display: none; align-items: center; justify-content: space-between; z-index: 90; }
+.abar.abv { display: flex; }
+
+
+/* ── OPS DETAIL PANEL COLOURS ── */
+.kv-danger    { color: var(--red) !important; }
+.kv-highlight { color: var(--amber) !important; }
+.kv-ok        { color: var(--green) !important; }
+.tag-ioc     { border-color: var(--red-dim);  color: var(--red);    background: var(--red-glow); }
+.tag-intel   { border-color: var(--purple);   color: var(--purple); background: rgba(155,114,207,0.08); }
+.tag-context { border-color: var(--blue-dim); color: var(--blue);   background: var(--blue-glow); }
+.log-snippet { display: none; }
+.log-snippet.log-visible { display: block; }
+.btn-sm { padding: 8px 16px !important; font-size: 12px !important; }
+.btn-escalate { background: var(--amber); color: #0a0c0e; }
+.btn-escalate:hover { background: #f5b840; }
+.btn-dismiss  { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+.btn-dismiss:hover { border-color: var(--red-dim); color: var(--red); }
+.btn-log-toggle { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+.btn-log-toggle:hover { border-color: var(--border-active); color: var(--text); }
+.new-indicator { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 5px var(--amber); margin-right: 6px; vertical-align: middle; animation: pulse 1.5s infinite; }
+/* asom status in commander */
+.as-done    { background: var(--green-glow); color: var(--green); border: 1px solid var(--green-dim); }
+.as-active  { background: var(--amber-glow); color: var(--amber); border: 1px solid var(--amber-dim); animation: blink 1.5s step-end infinite; }
+.as-pending { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
+.as-standby { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
+/* case statuses */
+.cs-open   { background: var(--blue-glow);  color: var(--blue);  border: 1px solid var(--blue-dim); }
+.cs-review { background: var(--amber-glow); color: var(--amber); border: 1px solid var(--amber-dim); }
+.cs-closed { background: var(--green-glow); color: var(--green); border: 1px solid var(--green-dim); }
+/* feed dots */
+.feed-dot.red   { background: var(--red);   box-shadow: 0 0 5px var(--red); }
+.feed-dot.amber { background: var(--amber); box-shadow: 0 0 5px var(--amber); }
+.feed-dot.blue  { background: var(--blue); }
+.feed-dot.green { background: var(--green); box-shadow: 0 0 5px var(--green); }
+
+</style>
+</head>
+<body>
+
+<!-- ════ DEPLOYMENT SCREEN ════ -->
+<div class="screen active" id="deployScreen">
+
+
+<!-- HEADER -->
+<header class="header">
+  <div class="logo">
+    <span class="logo-mark">Spotter-Shooter</span>
+    <span class="logo-sep">//</span>
+    <span class="logo-sub">Deployment Console v2.1</span>
+  </div>
+  <div class="header-right">
+    <div class="sys-badge">
+      <span class="dot green"></span>
+      STACK NOMINAL
+    </div>
+    <div class="sys-badge" style="color:var(--text-muted);">
+      SESSION: OPS-20260529
+    </div>
+  </div>
+</header>
+
+<!-- STEP RAIL -->
+<nav class="step-rail" id="stepRail">
+  <div class="step-item active" onclick="goTo(0)">
+    <div class="step-num">1</div>
+    <div class="step-label">System Check</div>
+  </div>
+  <div class="step-item" onclick="goTo(1)">
+    <div class="step-num">2</div>
+    <div class="step-label">Mission Docs</div>
+  </div>
+  <div class="step-item" onclick="goTo(2)">
+    <div class="step-num">3</div>
+    <div class="step-label">Telemetry</div>
+  </div>
+  <div class="step-item" onclick="goTo(3)">
+    <div class="step-num">4</div>
+    <div class="step-label">Detect Data</div>
+  </div>
+  <div class="step-item" onclick="goTo(4)">
+    <div class="step-num">5</div>
+    <div class="step-label">Model Provider</div>
+  </div>
+  <div class="step-item" onclick="goTo(5)">
+    <div class="step-num">6</div>
+    <div class="step-label">Agent Tasks</div>
+  </div>
+  <div class="step-item" onclick="goTo(6)">
+    <div class="step-num">7</div>
+    <div class="step-label">Review &amp; Launch</div>
+  </div>
+</nav>
+
+<main class="main">
+
+<!-- ════════════════════════════════════════
+     STEP 1 — WELCOME / SYSTEM CHECK
+════════════════════════════════════════ -->
+<div class="step-panel active" id="step-0">
+  <div class="hero">
+    <div class="hero-badge">Spotter-Shooter Framework</div>
+    <div class="hero-title">Deployment <span>Console</span></div>
+    <div class="hero-sub">Guided setup for your AI-driven threat hunting platform. No YAML. No Docker configs. No manual agent prompting.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Infrastructure Health Check</div>
+    <div class="status-grid" id="statusGrid">
+      <div class="status-item"><span class="status-name">Postgres</span><span class="status-val checking">Checking...</span></div>
+      <div class="status-item"><span class="status-name">Redis</span><span class="status-val checking">Checking...</span></div>
+      <div class="status-item"><span class="status-name">Docling</span><span class="status-val checking">Checking...</span></div>
+      <div class="status-item"><span class="status-name">Qdrant</span><span class="status-val checking">Checking...</span></div>
+      <div class="status-item"><span class="status-name">MinIO</span><span class="status-val checking">Checking...</span></div>
+      <div class="status-item"><span class="status-name">LiteLLM</span><span class="status-val checking">Checking...</span></div>
+      <div class="status-item"><span class="status-name">Zeek Worker</span><span class="status-val checking">Checking...</span></div>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-primary" id="beginBtn" onclick="beginSetup()">Begin Setup →</button>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════
+     STEP 2 — UPLOAD MISSION DOCUMENTS
+════════════════════════════════════════ -->
+<div class="step-panel" id="step-1">
+  <div class="step-heading">
+    <div class="step-eyebrow">Step 02 // Intelligence Upload</div>
+    <div class="step-title">Mission Documents</div>
+    <div class="step-desc">Upload mission-critical documents. Files are parsed by Docling and indexed into the Qdrant vector store for agent context retrieval.</div>
+  </div>
+  <div class="section-sep"></div>
+
+  <div class="drop-zone" onclick="document.getElementById('fileInput').click()">
+    <input type="file" id="fileInput" multiple style="display:none" onchange="handleFiles(this.files)">
+    <div class="drop-icon">⬆</div>
+    <div class="drop-label">Drop files here or click to upload</div>
+    <div class="drop-sub">ASOM · Intel Reports · Hunt Reports · SOPs · Network Notes · Asset Lists</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Indexed Documents</div>
+    <table class="file-table">
+      <thead>
+        <tr>
+          <th>File Name</th>
+          <th>Type</th>
+          <th>Parsed?</th>
+          <th>Indexed?</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="fileTableBody">
+        <tr>
+          <td>ASOM_Q2_2026.pdf</td>
+          <td><span class="tag tag-yes">ASOM</span></td>
+          <td><span class="tag tag-yes">✓ Yes</span></td>
+          <td><span class="tag tag-yes">✓ Yes</span></td>
+          <td><button class="btn btn-danger">Remove</button></td>
+        </tr>
+        <tr>
+          <td>Intel_Report_APT41.pdf</td>
+          <td><span class="tag tag-yes">Intel</span></td>
+          <td><span class="tag tag-yes">✓ Yes</span></td>
+          <td><span class="tag tag-pending">Indexing...</span></td>
+          <td><button class="btn btn-danger">Remove</button></td>
+        </tr>
+        <tr>
+          <td>Customer_Network_Notes_v3.docx</td>
+          <td><span class="tag tag-yes">Network</span></td>
+          <td><span class="tag tag-pending">Parsing...</span></td>
+          <td><span class="tag tag-no">Pending</span></td>
+          <td><button class="btn btn-danger">Remove</button></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-ghost" onclick="goTo(0)">← Back</button>
+    <button class="btn btn-primary" onclick="goTo(2)">Continue →</button>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════
+     STEP 3 — CONNECT TELEMETRY SOURCE
+════════════════════════════════════════ -->
+<div class="step-panel" id="step-2">
+  <div class="step-heading">
+    <div class="step-eyebrow">Step 03 // Data Ingestion</div>
+    <div class="step-title">Telemetry Source</div>
+    <div class="step-desc">Select your log source and configure the connection. This determines what telemetry agents can query during hunts.</div>
+  </div>
+  <div class="section-sep"></div>
+
+  <div class="provider-grid">
+    <div class="provider-card selected" onclick="selectTelemetry(this,'elastic')">
+      <div class="provider-icon">🔍</div>
+      <div class="provider-name">Elastic</div>
+    </div>
+    <div class="provider-card" onclick="selectTelemetry(this,'splunk')">
+      <div class="provider-icon">🌐</div>
+      <div class="provider-name">Splunk</div>
+    </div>
+    <div class="provider-card" onclick="selectTelemetry(this,'pcap')">
+      <div class="provider-icon">📁</div>
+      <div class="provider-name">PCAP Upload</div>
+    </div>
+    <div class="provider-card" onclick="selectTelemetry(this,'zeek')">
+      <div class="provider-icon">🦓</div>
+      <div class="provider-name">Zeek Logs</div>
+    </div>
+  </div>
+
+  <div class="card" id="elasticConfig">
+    <div class="card-title">Elastic Configuration</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Elasticsearch URL</label>
+        <input class="form-input" type="text" placeholder="https://elasticsearch.example.com" value="https://elastic.ops.internal">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Port</label>
+        <input class="form-input" type="text" placeholder="9200" value="9200">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Username</label>
+        <input class="form-input" type="text" placeholder="elastic" value="analyst_svc">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password / API Key</label>
+        <input class="form-input" type="password" placeholder="••••••••••••" value="supersecretapikey">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Index Pattern</label>
+        <input class="form-input" type="text" placeholder="zeek-*,suricata-*" value="zeek-*,suricata-*,winlogbeat-*">
+      </div>
+      <div class="form-group">
+        <label class="form-label">TLS Verify</label>
+        <select class="form-select">
+          <option selected>Yes (Recommended)</option>
+          <option>No (Dev Only)</option>
+        </select>
+      </div>
+    </div>
+
+    <button class="btn btn-secondary" onclick="testConnection()">Test Connection</button>
+
+    <div class="conn-result" id="connResult" style="display:none">
+      <div class="conn-result-head"><span>✓</span> Connection Successful</div>
+      <div style="color:var(--text-dim); margin-bottom:8px;">Found indexes:</div>
+      <div class="index-list">
+        <span class="index-tag">zeek-*</span>
+        <span class="index-tag">suricata-*</span>
+        <span class="index-tag">winlogbeat-*</span>
+        <span class="index-tag">filebeat-*</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-ghost" onclick="goTo(1)">← Back</button>
+    <button class="btn btn-primary" onclick="goTo(3)">Continue →</button>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════
+     STEP 4 — DETECT AVAILABLE DATA
+════════════════════════════════════════ -->
+<div class="step-panel" id="step-3">
+  <div class="step-heading">
+    <div class="step-eyebrow">Step 04 // Telemetry Audit</div>
+    <div class="step-title">Available Data</div>
+    <div class="step-desc">The system has probed your telemetry source. Review what log types are present and confirm your hunt scope.</div>
+  </div>
+  <div class="section-sep"></div>
+
+  <div class="card">
+    <div class="card-title">Telemetry Inventory</div>
+    <div class="detect-list">
+      <div class="detect-item">
+        <span class="detect-name">Zeek DNS Logs</span>
+        <div style="display:flex;align-items:center;gap:16px">
+          <span class="detect-count">1.2M events / 24h</span>
+          <span class="tag tag-yes">✓ Found</span>
+        </div>
+      </div>
+      <div class="detect-item">
+        <span class="detect-name">Zeek Conn Logs</span>
+        <div style="display:flex;align-items:center;gap:16px">
+          <span class="detect-count">8.4M events / 24h</span>
+          <span class="tag tag-yes">✓ Found</span>
+        </div>
+      </div>
+      <div class="detect-item">
+        <span class="detect-name">Zeek SSL Logs</span>
+        <div style="display:flex;align-items:center;gap:16px">
+          <span class="detect-count">340K events / 24h</span>
+          <span class="tag tag-yes">✓ Found</span>
+        </div>
+      </div>
+      <div class="detect-item">
+        <span class="detect-name">Suricata Alerts</span>
+        <div style="display:flex;align-items:center;gap:16px">
+          <span class="detect-count">12K events / 24h</span>
+          <span class="tag tag-yes">✓ Found</span>
+        </div>
+      </div>
+      <div class="detect-item">
+        <span class="detect-name">Sysmon Logs</span>
+        <div style="display:flex;align-items:center;gap:16px">
+          <span class="detect-count">920K events / 24h</span>
+          <span class="tag tag-yes">✓ Found</span>
+        </div>
+      </div>
+      <div class="detect-item">
+        <span class="detect-name">Windows Event Logs</span>
+        <div style="display:flex;align-items:center;gap:16px">
+          <span class="detect-count">2.1M events / 24h</span>
+          <span class="tag tag-yes">✓ Found</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="rec-box">
+      <div class="rec-label">⬡ Recommendation</div>
+      <div class="rec-text">Start with network telemetry only.</div>
+      <div class="rec-reason">Network anomaly tasks are lower-risk, easier to validate, and preserve human control over host-level interpretation. Host-based log analysis may require additional operational context from administrators.</div>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-ghost" onclick="goTo(2)">← Back</button>
+    <button class="btn btn-primary" onclick="goTo(4)">Continue →</button>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════
+     STEP 5 — CONNECT MODEL PROVIDER
+════════════════════════════════════════ -->
+<div class="step-panel" id="step-4">
+  <div class="step-heading">
+    <div class="step-eyebrow">Step 05 // Inference Engine</div>
+    <div class="step-title">Model Provider</div>
+    <div class="step-desc">Configure the LLM backend that agents will use for analysis and reasoning.</div>
+  </div>
+  <div class="section-sep"></div>
+
+  <div class="model-provider-grid">
+    <div class="provider-card selected" onclick="selectModel(this,'ollama')">
+      <div class="provider-icon">🦙</div>
+      <div class="provider-name">Ollama</div>
+    </div>
+    <div class="provider-card" onclick="selectModel(this,'openai')">
+      <div class="provider-icon">⬡</div>
+      <div class="provider-name">OpenAI</div>
+    </div>
+    <div class="provider-card" onclick="selectModel(this,'anthropic')">
+      <div class="provider-icon">◈</div>
+      <div class="provider-name">Anthropic</div>
+    </div>
+    <div class="provider-card" onclick="selectModel(this,'openrouter')">
+      <div class="provider-icon">⚡</div>
+      <div class="provider-name">OpenRouter</div>
+    </div>
+    <div class="provider-card" onclick="selectModel(this,'custom')">
+      <div class="provider-icon">⚙</div>
+      <div class="provider-name">On-Prem</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Ollama Configuration</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Provider URL</label>
+        <input class="form-input" type="text" value="http://ollama.ops.internal:11434">
+      </div>
+      <div class="form-group">
+        <label class="form-label">API Key</label>
+        <input class="form-input" type="password" placeholder="(Not required for Ollama)">
+      </div>
+    </div>
+    <div class="form-row-3">
+      <div class="form-group">
+        <label class="form-label">Model</label>
+        <input class="form-input" type="text" value="llama3.1:70b">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Context Window</label>
+        <input class="form-input" type="text" value="128000">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Temperature</label>
+        <input class="form-input" type="text" value="0.1">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Max Tokens</label>
+        <input class="form-input" type="text" value="4096">
+      </div>
+    </div>
+
+    <button class="btn btn-secondary" onclick="testModel()">Test Model</button>
+
+    <div class="conn-result" id="modelResult" style="display:none">
+      <div class="conn-result-head"><span>✓</span> Model Connected</div>
+      <div style="color:var(--text-dim);">Test prompt successful. Latency: 1.2s · Tokens/sec: 48</div>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-ghost" onclick="goTo(3)">← Back</button>
+    <button class="btn btn-primary" onclick="goTo(5)">Continue →</button>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════
+     STEP 6 — SELECT AGENT TASKS
+════════════════════════════════════════ -->
+<div class="step-panel" id="step-5">
+  <div class="step-heading">
+    <div class="step-eyebrow">Step 06 // Agent Configuration</div>
+    <div class="step-title">Agent Tasks</div>
+    <div class="step-desc">Select which agents to activate for this hunt operation. Recommended agents are pre-selected based on detected telemetry.</div>
+  </div>
+  <div class="section-sep"></div>
+
+  <div class="card">
+    <div class="card-title">Recommended Agents — Network Telemetry</div>
+    <div class="agent-grid">
+      <div class="agent-item selected" onclick="toggleAgent(this)">
+        <div class="agent-check">✓</div>
+        <div class="agent-info">
+          <div class="agent-name">New Domain Agent</div>
+          <div class="agent-desc">Detects newly observed domains across DNS logs. Correlates with intel and ASOM context.</div>
+        </div>
+        <span class="agent-badge badge-default">Default</span>
+      </div>
+      <div class="agent-item selected" onclick="toggleAgent(this)">
+        <div class="agent-check">✓</div>
+        <div class="agent-info">
+          <div class="agent-name">New External IP Agent</div>
+          <div class="agent-desc">Identifies first-seen external IPs in connection logs and enriches with threat intel.</div>
+        </div>
+        <span class="agent-badge badge-default">Default</span>
+      </div>
+      <div class="agent-item selected" onclick="toggleAgent(this)">
+        <div class="agent-check">✓</div>
+        <div class="agent-info">
+          <div class="agent-name">DGA Agent</div>
+          <div class="agent-desc">Scores domains for algorithmic generation patterns. Flags potential C2 infrastructure.</div>
+        </div>
+        <span class="agent-badge badge-default">Default</span>
+      </div>
+      <div class="agent-item selected" onclick="toggleAgent(this)">
+        <div class="agent-check">✓</div>
+        <div class="agent-info">
+          <div class="agent-name">Beaconing Agent</div>
+          <div class="agent-desc">Analyzes connection intervals for periodic callback patterns in network flow data.</div>
+        </div>
+        <span class="agent-badge badge-default">Default</span>
+      </div>
+      <div class="agent-item selected" onclick="toggleAgent(this)">
+        <div class="agent-check">✓</div>
+        <div class="agent-info">
+          <div class="agent-name">JA3/JA4 Agent</div>
+          <div class="agent-desc">Fingerprints TLS clients and servers. Correlates unknown fingerprints with threat feeds.</div>
+        </div>
+        <span class="agent-badge badge-default">Default</span>
+      </div>
+      <div class="agent-item selected" onclick="toggleAgent(this)">
+        <div class="agent-check">✓</div>
+        <div class="agent-info">
+          <div class="agent-name">Threat Intel Correlation Agent</div>
+          <div class="agent-desc">Cross-references all observables against uploaded intel reports and ASOM entries.</div>
+        </div>
+        <span class="agent-badge badge-default">Default</span>
+      </div>
+      <div class="agent-item selected" onclick="toggleAgent(this)">
+        <div class="agent-check">✓</div>
+        <div class="agent-info">
+          <div class="agent-name">ASOM Drafting Agent</div>
+          <div class="agent-desc">Generates draft ASOM entries from confirmed findings. Requires human approval before commit.</div>
+        </div>
+        <span class="agent-badge badge-default">Default</span>
+      </div>
+    </div>
+
+    <hr class="divider">
+    <div class="divider-label">Optional Expansion — Host Telemetry</div>
+
+    <div class="agent-grid">
+      <div class="agent-item" onclick="toggleAgent(this)">
+        <div class="agent-check"></div>
+        <div class="agent-info">
+          <div class="agent-name">Sysmon Process Anomaly Agent</div>
+          <div class="agent-desc">Detects unusual process trees, injection attempts, and LOLBin abuse in Sysmon data.</div>
+        </div>
+        <span class="agent-badge badge-optional">Optional</span>
+      </div>
+      <div class="agent-item" onclick="toggleAgent(this)">
+        <div class="agent-check"></div>
+        <div class="agent-info">
+          <div class="agent-name">Windows Logon Anomaly Agent</div>
+          <div class="agent-desc">Identifies suspicious authentication patterns and lateral movement indicators.</div>
+        </div>
+        <span class="agent-badge badge-optional">Optional</span>
+      </div>
+      <div class="agent-item" onclick="toggleAgent(this)">
+        <div class="agent-check"></div>
+        <div class="agent-info">
+          <div class="agent-name">PowerShell Activity Agent</div>
+          <div class="agent-desc">Analyzes script block logging for obfuscation, encoded commands, and suspicious modules.</div>
+        </div>
+        <span class="agent-badge badge-optional">Optional</span>
+      </div>
+      <div class="agent-item" onclick="toggleAgent(this)">
+        <div class="agent-check"></div>
+        <div class="agent-info">
+          <div class="agent-name">Service Account Activity Agent</div>
+          <div class="agent-desc">Monitors privileged service account behavior for anomalous access patterns.</div>
+        </div>
+        <span class="agent-badge badge-optional">Optional</span>
+      </div>
+    </div>
+
+    <div class="warn-box">
+      <div class="warn-label">⚠ Operational Advisory</div>
+      Host-based log analysis may require additional operational context from administrators. AI-generated observations should not be treated as final determinations without analyst review.
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-ghost" onclick="goTo(4)">← Back</button>
+    <button class="btn btn-primary" onclick="goTo(6)">Continue →</button>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════
+     STEP 7 — REVIEW AND LAUNCH
+════════════════════════════════════════ -->
+<div class="step-panel" id="step-6">
+  <div class="step-heading">
+    <div class="step-eyebrow">Step 07 // Pre-Launch Review</div>
+    <div class="step-title">Review &amp; Launch</div>
+    <div class="step-desc">Confirm your configuration before launching the hunt. All settings can be modified after launch from the operational console.</div>
+  </div>
+  <div class="section-sep"></div>
+
+  <div class="review-grid">
+    <div class="review-item">
+      <div class="review-key">Documents Indexed</div>
+      <div class="review-val highlight">8</div>
+    </div>
+    <div class="review-item">
+      <div class="review-key">Telemetry Source</div>
+      <div class="review-val">Elastic</div>
+    </div>
+    <div class="review-item">
+      <div class="review-key">Model Provider</div>
+      <div class="review-val">Ollama</div>
+    </div>
+    <div class="review-item">
+      <div class="review-key">Selected Model</div>
+      <div class="review-val" style="font-size:15px">llama3.1:70b</div>
+    </div>
+    <div class="review-item">
+      <div class="review-key">Agents Enabled</div>
+      <div class="review-val highlight">7</div>
+    </div>
+    <div class="review-item">
+      <div class="review-key">Telemetry Volume</div>
+      <div class="review-val" style="font-size:14px">~12.5M events/day</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Operational Controls</div>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Human Approval Required</div>
+        <div class="toggle-sub">Analyst must approve before events escalate to cases</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" checked>
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Autonomous Case Creation</div>
+        <div class="toggle-sub">System may open cases without analyst review</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Autonomous ASOM Creation</div>
+        <div class="toggle-sub">System may write ASOM entries without human sign-off</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-ghost" onclick="goTo(5)">← Back</button>
+    <button class="btn btn-launch" onclick="launchHunt()">⬡ Launch Hunt</button>
+  </div>
+</div>
+
+</main>
+
+
+  <div style="font-family:var(--display);font-size:48px;font-weight:700;letter-spacing:0.08em;color:#e8edf0;text-transform:uppercase;">Hunt Active</div>
+  <div style="font-family:var(--mono);font-size:13px;color:var(--text-dim);text-align:center;max-width:380px;line-height:1.6;">Transitioning to Operational Console. 7 agents are online and processing telemetry.</div>
+  
+</div>
+
+
+
+</div>
+
+
+<!-- LAUNCH OVERLAY -->
+<div id="launchOverlay">
+  <div style="display:flex;flex-direction:column;align-items:flex-start;margin-bottom:28px;">
+    <div class="lo-line" id="lo1">Initializing agent runtime...</div>
+    <div class="lo-line" id="lo2">Connecting to Elastic &mdash; zeek-*, suricata-*</div>
+    <div class="lo-line" id="lo3">Loading Qdrant vector index &mdash; 8 documents</div>
+    <div class="lo-line" id="lo4">Starting Zeek Worker process</div>
+    <div class="lo-line" id="lo5">Spawning 7 agent threads</div>
+    <div class="lo-line lo-final" id="lo6">All systems nominal &mdash; hunt active</div>
+  </div>
+  <div class="lo-big" id="loBig">Hunt <span>Active</span></div>
+  <div class="lo-sub" id="loSub">OPS-20260529 // llama3.1:70b // 7 Agents Online</div>
+  <div class="lo-btns" id="loBtns">
+    <button class="btn lo-btn-a" onclick="enterOps('analyst')">Open Analyst View &#8594;</button>
+    <button class="btn lo-btn-c" onclick="enterOps('commander')">Commander View</button>
+  </div>
+</div>
+
+<!-- ════ OPS SCREEN ════ -->
+<div class="screen" id="opsScreen">
+
+  <header class="app-header">
+    <div class="logo">
+      <span class="logo-mark">Spotter-Shooter</span>
+      <span class="logo-sep"> // </span>
+      <span class="logo-sub">Operational Console</span>
+    </div>
+    <div class="role-switcher">
+      <button class="role-btn ra" id="btnAnalyst" onclick="switchOpsView('analyst')">Analyst View</button>
+      <button class="role-btn" id="btnCommander" onclick="switchOpsView('commander')">Commander View</button>
+    </div>
+    <div class="header-meta">
+      <div style="display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;letter-spacing:0.1em;color:var(--green);text-transform:uppercase;"><span class="dot green"></span> Hunt Active</div>
+      <div class="header-tag">OPS-20260529 // llama3.1:70b</div>
+      <button class="admin-link" onclick="returnToAdmin()">&#8592; Admin</button>
+    </div>
+  </header>
+
+
+
+<!-- ════════════════════════════════════════
+     ANALYST VIEW
+════════════════════════════════════════ -->
+<div class="view active" id="analystView">
+
+  <!-- Left: Event List -->
+  <div class="event-list-panel">
+    <div class="panel-toolbar">
+      <span class="toolbar-title">Events</span>
+      <span class="toolbar-count">23 active</span>
+    </div>
+    <div class="filter-bar">
+      <button class="filter-chip active" onclick="setFilter(this,'all')">All</button>
+      <button class="filter-chip crit" onclick="setFilter(this,'crit')">Critical</button>
+      <button class="filter-chip high-f" onclick="setFilter(this,'high')">High</button>
+      <button class="filter-chip" onclick="setFilter(this,'medium')">Medium</button>
+      <button class="filter-chip" onclick="setFilter(this,'low')">Low</button>
+    </div>
+    <div class="event-list-scroll" id="eventList"></div>
+  </div>
+
+  <!-- Right: Detail Panel -->
+  <div class="event-detail-panel" id="detailPanel">
+    <div class="detail-empty" id="detailEmpty">
+      <div class="detail-empty-icon">◈</div>
+      <div class="detail-empty-text">Select an event to review</div>
+    </div>
+    <div class="detail-content" id="detailContent">
+      <!-- populated by JS -->
+    </div>
+  </div>
+
+  <!-- Bottom bar -->
+  <div class="analyst-bottom" style="position:fixed;bottom:0;left:0;right:0;z-index:100;">
+    <div class="bottom-stats">
+      <div class="bottom-stat">Events Today <span class="bottom-stat-val amber">23</span></div>
+      <div class="bottom-stat">Escalated <span class="bottom-stat-val red">4</span></div>
+      <div class="bottom-stat">Dismissed <span class="bottom-stat-val">11</span></div>
+      <div class="bottom-stat">Cases Open <span class="bottom-stat-val green">4</span></div>
+    </div>
+    <button class="cases-drawer-btn" onclick="toggleDrawer()">
+      Active Cases <span class="case-count-pill">4</span>
+    </button>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════
+     COMMANDER VIEW
+════════════════════════════════════════ -->
+<div class="view" id="commanderView">
+  <div class="cmd-header-bar">
+    <div class="cmd-title">Operational Summary</div>
+    <div class="cmd-timestamp" id="cmdTimestamp"></div>
+  </div>
+  <div class="cmd-body">
+
+    <!-- KPI Row -->
+    <div class="kpi-row">
+      <div class="kpi-card amber-accent">
+        <div class="kpi-label">ASOM Lines Completed</div>
+        <div class="kpi-value amber">12</div>
+        <div class="kpi-sub"><span class="kpi-delta up">+3</span> since 0600</div>
+      </div>
+      <div class="kpi-card red-accent">
+        <div class="kpi-label">Threat Actors Found</div>
+        <div class="kpi-value red">3</div>
+        <div class="kpi-sub"><span class="kpi-delta up">+1</span> new today</div>
+      </div>
+      <div class="kpi-card blue-accent">
+        <div class="kpi-label">Active Cases</div>
+        <div class="kpi-value blue">4</div>
+        <div class="kpi-sub">2 awaiting analyst</div>
+      </div>
+      <div class="kpi-card green-accent">
+        <div class="kpi-label">Completed Cases</div>
+        <div class="kpi-value green">7</div>
+        <div class="kpi-sub"><span class="kpi-delta dn">+2</span> closed today</div>
+      </div>
+      <div class="kpi-card purple-accent">
+        <div class="kpi-label">Events (24h)</div>
+        <div class="kpi-value purple">23</div>
+        <div class="kpi-sub">4 critical · 8 high</div>
+      </div>
+    </div>
+
+    <!-- Analyst Status Row -->
+    <div class="analyst-status-row">
+      <div class="analyst-card">
+        <div class="analyst-avatar">MR</div>
+        <div>
+          <div class="analyst-name">M. Rivera</div>
+          <div class="analyst-load">6 events · 2 cases</div>
+        </div>
+        <div class="analyst-status-dot" style="background:var(--green);box-shadow:0 0 5px var(--green)"></div>
+      </div>
+      <div class="analyst-card">
+        <div class="analyst-avatar">JK</div>
+        <div>
+          <div class="analyst-name">J. Kim</div>
+          <div class="analyst-load">9 events · 1 case</div>
+        </div>
+        <div class="analyst-status-dot" style="background:var(--green);box-shadow:0 0 5px var(--green)"></div>
+      </div>
+      <div class="analyst-card">
+        <div class="analyst-avatar">TP</div>
+        <div>
+          <div class="analyst-name">T. Patel</div>
+          <div class="analyst-load">5 events · 1 case</div>
+        </div>
+        <div class="analyst-status-dot" style="background:var(--amber)"></div>
+      </div>
+      <div class="analyst-card">
+        <div class="analyst-avatar">AL</div>
+        <div>
+          <div class="analyst-name">A. Larsson</div>
+          <div class="analyst-load">Offline</div>
+        </div>
+        <div class="analyst-status-dot" style="background:var(--text-muted)"></div>
+      </div>
+    </div>
+
+    <!-- Main grid: ASOM + Threat Actors -->
+    <div class="cmd-grid">
+      <!-- ASOM Progress -->
+      <div class="cmd-card">
+        <div class="cmd-card-header">
+          <div class="cmd-card-title amber-bar">ASOM Lines</div>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text-muted)">12 / 18 complete</span>
+        </div>
+        <div class="cmd-card-body">
+          <div class="asom-line-list" id="asomList"></div>
+        </div>
+      </div>
+
+      <!-- Threat Actors -->
+      <div class="cmd-card">
+        <div class="cmd-card-header">
+          <div class="cmd-card-title red-bar">Threat Actors</div>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--red)">3 identified</span>
+        </div>
+        <div class="cmd-card-body">
+          <div class="actor-list" id="actorList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom grid: Agent Feed + Events Table -->
+    <div class="cmd-grid">
+      <!-- Agent Activity Feed -->
+      <div class="cmd-card">
+        <div class="cmd-card-header">
+          <div class="cmd-card-title blue-bar">Agent Activity Feed</div>
+          <div class="live-badge"><span class="dot green"></span> Live</div>
+        </div>
+        <div class="cmd-card-body">
+          <div class="agent-feed" id="agentFeed"></div>
+        </div>
+      </div>
+
+      <!-- Events by Severity -->
+      <div class="cmd-card">
+        <div class="cmd-card-header">
+          <div class="cmd-card-title green-bar">Events by Agent</div>
+        </div>
+        <div class="cmd-card-body">
+          <table class="events-table" id="eventsTable">
+            <thead>
+              <tr>
+                <th>Agent</th>
+                <th>Events</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="eventsTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ════ CASES DRAWER ════ -->
+<div class="cases-drawer" id="casesDrawer">
+  <div class="drawer-header">
+    <div class="drawer-title">Active Cases</div>
+    <button class="drawer-close" onclick="toggleDrawer()">✕</button>
+  </div>
+  <div class="drawer-body" id="drawerBody"></div>
+</div>
+
+
+
+
+</div>
+
+
+<script>
+/* ═══════════════════════════════════════
+   DEPLOYMENT LOGIC
+═══════════════════════════════════════ */
+function goTo(n) {
+  document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.step-item').forEach((s, i) => {
+    s.classList.remove('active','done');
+    if (i < n) s.classList.add('done');
+  });
+  document.getElementById('step-' + n).classList.add('active');
+  document.querySelectorAll('.step-item')[n].classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function beginSetup() {
+  const items = document.querySelectorAll('.status-val');
+  items.forEach((el, i) => {
+    setTimeout(() => { el.className = 'status-val online'; el.textContent = 'Online'; }, 300 + i * 200);
+  });
+  setTimeout(() => goTo(1), 300 + items.length * 200 + 350);
+}
+
+function selectTelemetry(el) {
+  document.querySelectorAll('.provider-grid .provider-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function selectModel(el) {
+  document.querySelectorAll('.model-provider-grid .provider-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function testConnection() {
+  const r = document.getElementById('connResult');
+  r.style.display = 'none';
+  setTimeout(() => { r.style.display = 'block'; }, 900);
+}
+
+function testModel() {
+  const r = document.getElementById('modelResult');
+  r.style.display = 'none';
+  setTimeout(() => { r.style.display = 'block'; }, 1100);
+}
+
+function toggleAgent(el) {
+  el.classList.toggle('selected');
+  el.querySelector('.agent-check').textContent = el.classList.contains('selected') ? '✓' : '';
+}
+
+function handleFiles(files) {
+  const tbody = document.getElementById('fileTableBody');
+  Array.from(files).forEach(f => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${f.name}</td><td><span class="tag tag-yes">DOC</span></td><td><span class="tag tag-pending">Parsing...</span></td><td><span class="tag tag-no">Pending</span></td><td><button class="btn btn-danger" onclick="this.closest('tr').remove()">Remove</button></td>`;
+    tbody.appendChild(tr);
+    setTimeout(() => {
+      tr.querySelectorAll('.tag')[2].className = 'tag tag-yes';
+      tr.querySelectorAll('.tag')[2].textContent = '✓ Yes';
+      tr.querySelectorAll('.tag')[3].className = 'tag tag-pending';
+      tr.querySelectorAll('.tag')[3].textContent = 'Indexing...';
+    }, 1500);
+    setTimeout(() => {
+      tr.querySelectorAll('.tag')[3].className = 'tag tag-yes';
+      tr.querySelectorAll('.tag')[3].textContent = '✓ Yes';
+    }, 3200);
+  });
+}
+
+/* ═══════════════════════════════════════
+   LAUNCH TRANSITION
+═══════════════════════════════════════ */
+function launchHunt() {
+  const ov = document.getElementById('launchOverlay');
+  ov.classList.add('lo-show');
+  const lineIds = ['lo1','lo2','lo3','lo4','lo5','lo6'];
+  lineIds.forEach((id, i) => {
+    setTimeout(() => document.getElementById(id).classList.add('los'), 300 + i * 480);
+  });
+  setTimeout(() => {
+    document.getElementById('loBig').classList.add('los');
+    document.getElementById('loSub').classList.add('los');
+  }, 300 + lineIds.length * 480 + 200);
+  setTimeout(() => {
+    document.getElementById('loBtns').classList.add('los');
+  }, 300 + lineIds.length * 480 + 600);
+}
+
+function enterOps(role) {
+  const ov = document.getElementById('launchOverlay');
+  ov.classList.remove('lo-show');
+  ['lo1','lo2','lo3','lo4','lo5','lo6','loBig','loSub','loBtns'].forEach(id =>
+    document.getElementById(id).classList.remove('los')
+  );
+  document.getElementById('deployScreen').classList.remove('active');
+  document.getElementById('opsScreen').classList.add('active');
+  document.body.style.overflow = 'hidden';
+  switchOpsView(role);
+  renderAll();
+}
+
+function returnToAdmin() {
+  document.getElementById('opsScreen').classList.remove('active');
+  document.getElementById('deployScreen').classList.add('active');
+  document.body.style.overflow = '';
+  window.scrollTo({ top: 0 });
+}
+
+/* ═══════════════════════════════════════
+   OPS VIEW SWITCHER
+═══════════════════════════════════════ */
+function switchOpsView(role) {
+  document.querySelectorAll('.ops-view').forEach(v => v.classList.remove('ova'));
+  document.getElementById(role + 'View').classList.add('ova');
+  document.getElementById('btnAnalyst').className   = 'role-btn' + (role === 'analyst'   ? ' ra' : '');
+  document.getElementById('btnCommander').className = 'role-btn' + (role === 'commander' ? ' rc' : '');
+  document.getElementById('analystBar').className   = 'abar'     + (role === 'analyst'   ? ' abv' : '');
+}
+
+/* ═══════════════════════════════════════
+   DATA — EVENTS
+═══════════════════════════════════════ */
+const EVENTS = [
+  {
+    id: 'EVT-0041', sev: 'crit', sevLabel: 'Critical',
+    title: 'C2 Beacon Detected',
+    agent: 'Beaconing Agent', time: '14:32',
+    snippet: 'Host 10.4.22.17 → 185.220.101.47 every 300s ± 2s',
+    explanation: 'A host on the internal network has been making outbound TCP connections to an external IP on port 443 at near-perfect 300-second intervals for 6+ hours. The timing jitter of ±2 seconds is inconsistent with human-initiated traffic and strongly indicates an automated callback loop from implanted malware.',
+    enrichment: [
+      { l:'Source IP',     v:'10.4.22.17',        c:'kv-highlight' },
+      { l:'Dest IP',       v:'185.220.101.47',     c:'kv-danger' },
+      { l:'Port',          v:'443 / TCP',          c:'' },
+      { l:'Interval',      v:'300s ± 2s',          c:'kv-highlight' },
+      { l:'Duration',      v:'6h 14m',             c:'kv-highlight' },
+      { l:'Bytes Out',     v:'2.1 KB avg',         c:'' }
+    ],
+    tags: [
+      { t:'185.220.101.47 — TOR Exit Node', c:'tag-ioc' },
+      { t:'APT41 C2 IP Range (Intel Report)', c:'tag-intel' },
+      { t:'ASOM Section 2.2 — Priority Host', c:'tag-context' }
+    ],
+    nextQ: 'What processes on 10.4.22.17 are responsible for the outbound connections? Are there corresponding Sysmon events showing a suspicious parent-child process relationship?',
+    log: '{ "ts":"2026-05-29T14:32:11Z", "id.orig_h":"10.4.22.17", "id.resp_h":"185.220.101.47", "id.resp_p":443, "proto":"tcp", "duration":0.412, "orig_bytes":2108, "resp_bytes":512, "conn_state":"SF" }'
+  },
+  {
+    id: 'EVT-0040', sev: 'crit', sevLabel: 'Critical',
+    title: 'DGA Domain Cluster',
+    agent: 'DGA Agent', time: '14:18',
+    snippet: '14 algorithmically-generated domains queried from 10.4.19.3',
+    explanation: 'Endpoint 10.4.19.3 queried 14 domains in a 20-minute window, all scoring above 0.91 on the DGA entropy model. Domains exhibit high n-gram entropy, no Alexa top-1M overlap, and an 86% NXDOMAIN rate — consistent with Supernova or similar DGA-based C2 families conducting domain fluxing.',
+    enrichment: [
+      { l:'Source Host',    v:'10.4.19.3',         c:'kv-highlight' },
+      { l:'Domain Count',   v:'14',                c:'kv-danger' },
+      { l:'Avg Entropy',    v:'4.31 bits/char',    c:'kv-highlight' },
+      { l:'Window',         v:'20 minutes',        c:'' },
+      { l:'NXDOMAIN Rate',  v:'86%',               c:'kv-danger' },
+      { l:'Resolver',       v:'8.8.8.8 (External)',c:'kv-highlight' }
+    ],
+    tags: [
+      { t:'DGA Confidence Score: 0.94', c:'tag-ioc' },
+      { t:'Supernova Family — Intel Match', c:'tag-intel' },
+      { t:'Bypassing Internal DNS Resolver', c:'tag-context' }
+    ],
+    nextQ: 'Have any of the 14 queried domains resolved successfully? Has 10.4.19.3 made any outbound TCP connections following a successful DNS resolution?',
+    log: '{ "ts":"2026-05-29T14:18:44Z", "query":"xkqvrtmnpzl.net", "qtype_name":"A", "rcode_name":"NXDOMAIN", "id.orig_h":"10.4.19.3", "id.resp_h":"8.8.8.8", "id.resp_p":53 }'
+  },
+  {
+    id: 'EVT-0039', sev: 'high', sevLabel: 'High',
+    title: 'Suspicious JA3 Fingerprint',
+    agent: 'JA3/JA4 Agent', time: '13:55',
+    snippet: 'JA3: 51c64c77... matched Cobalt Strike default profile',
+    explanation: "Outbound TLS from 10.4.8.102 to port 8443 presented a JA3 fingerprint associated with Cobalt Strike's default malleable C2 profile. The destination is self-signed, not in any approved cloud provider range, and the non-standard port increases suspicion of deliberate firewall evasion.",
+    enrichment: [
+      { l:'Source',         v:'10.4.8.102',        c:'kv-highlight' },
+      { l:'Destination',    v:'45.142.212.100',    c:'kv-danger' },
+      { l:'JA3 Hash',       v:'51c64c77e60f...',   c:'kv-highlight' },
+      { l:'TI Match',       v:'Cobalt Strike',     c:'kv-danger' },
+      { l:'Cert CN',        v:'selfhosted.local',  c:'kv-highlight' },
+      { l:'Port',           v:'8443 (Non-standard)',c:'kv-danger' }
+    ],
+    tags: [
+      { t:'Cobalt Strike JA3 — Default Profile', c:'tag-ioc' },
+      { t:'Self-Signed Certificate', c:'tag-ioc' },
+      { t:'Non-standard Egress Port 8443', c:'tag-context' }
+    ],
+    nextQ: 'Is 10.4.8.102 a known managed endpoint? Review Sysmon logs for rundll32, regsvr32, or mshta spawning a network-connected child process in the same timeframe.',
+    log: '{ "ts":"2026-05-29T13:55:09Z", "id.orig_h":"10.4.8.102", "id.resp_h":"45.142.212.100", "id.resp_p":8443, "ja3":"51c64c77e60f3980eea90869b68c58a8", "server_name":"selfhosted.local", "validation_status":"self signed certificate" }'
+  },
+  {
+    id: 'EVT-0038', sev: 'high', sevLabel: 'High',
+    title: 'New External IP — High Volume',
+    agent: 'New External IP Agent', time: '13:41',
+    snippet: '203.0.113.88 first seen — 14,200 inbound connections in 1h',
+    explanation: 'IP 203.0.113.88 appeared in connection logs for the first time and immediately generated over 14,000 SYN packets across 47 internal hosts within one hour. The IP is registered to AS209103, a known bulletproof hosting provider. Volume and breadth is consistent with automated scanning or initial access brokering.',
+    enrichment: [
+      { l:'Source IP',      v:'203.0.113.88',      c:'kv-danger' },
+      { l:'ASN',            v:'AS209103 (BPH)',     c:'kv-danger' },
+      { l:'Total Conns',    v:'14,200 / 1h',       c:'kv-highlight' },
+      { l:'Unique Targets', v:'47 internal hosts', c:'kv-highlight' },
+      { l:'First Seen',     v:'13:41 today',       c:'' },
+      { l:'Country',        v:'RU',                c:'' }
+    ],
+    tags: [
+      { t:'Bulletproof Hosting ASN', c:'tag-ioc' },
+      { t:'Zero Prior Sightings', c:'tag-context' },
+      { t:'Scanning Behavioural Pattern', c:'tag-context' }
+    ],
+    nextQ: 'Which ports and services are being targeted? Have any SYN packets been answered (conn_state SF rather than S0)? Cross-reference targeted hosts with the asset list.',
+    log: '{ "ts":"2026-05-29T13:41:00Z", "id.orig_h":"203.0.113.88", "id.resp_h":"10.4.0.1", "id.resp_p":22, "conn_state":"S0", "orig_bytes":0, "history":"S", "missed_bytes":0 }'
+  },
+  {
+    id: 'EVT-0037', sev: 'high', sevLabel: 'High',
+    title: 'Threat Intel Match — APT41',
+    agent: 'Threat Intel Correlation Agent', time: '13:20',
+    snippet: 'update-cdn[.]net — exact match in APT41 Intel Report',
+    explanation: 'DNS query for update-cdn[.]net from internal host 10.4.3.55. This domain appears verbatim in the uploaded APT41 intelligence report as a staging domain used in Operation ShadowHarvest. The domain has resolved to a new IP not seen in prior Passive DNS data, suggesting active infrastructure rotation.',
+    enrichment: [
+      { l:'Domain',         v:'update-cdn[.]net',  c:'kv-danger' },
+      { l:'Intel Source',   v:'APT41 Report Q1',   c:'kv-highlight' },
+      { l:'Campaign',       v:'ShadowHarvest',     c:'kv-danger' },
+      { l:'Queried By',     v:'10.4.3.55',         c:'' },
+      { l:'Resolved IP',    v:'91.108.56.200',     c:'kv-danger' },
+      { l:'Match Type',     v:'Exact String',      c:'kv-ok' }
+    ],
+    tags: [
+      { t:'APT41 IoC — Exact Domain Match', c:'tag-intel' },
+      { t:'Operation ShadowHarvest Infrastructure', c:'tag-intel' },
+      { t:'Successful DNS Resolution — Active Infra', c:'tag-ioc' }
+    ],
+    nextQ: 'Has 10.4.3.55 made any TCP connections to 91.108.56.200 following the DNS resolution? What user account and hostname is associated with this IP in the asset list?',
+    log: '{ "ts":"2026-05-29T13:20:17Z", "query":"update-cdn.net", "qtype_name":"A", "rcode_name":"NOERROR", "answers":["91.108.56.200"], "TTL":60, "id.orig_h":"10.4.3.55" }'
+  },
+  {
+    id: 'EVT-0036', sev: 'medium', sevLabel: 'Medium',
+    title: 'New Domain — Low Reputation',
+    agent: 'New Domain Agent', time: '12:58',
+    snippet: 'telemetry-api[.]io — 3 days old, first internal query',
+    explanation: 'Domain telemetry-api[.]io was registered 3 days ago via a privacy-protected registrar and has only been queried from two distinct ASNs globally (including this one), suggesting it is not broadly known or operated. The name mimics legitimate telemetry infrastructure, which is a common masquerading technique.',
+    enrichment: [
+      { l:'Domain',         v:'telemetry-api[.]io',c:'kv-highlight' },
+      { l:'Registered',     v:'3 days ago',        c:'kv-highlight' },
+      { l:'Registrar',      v:'PrivacyProtected',  c:'' },
+      { l:'Queried By',     v:'10.4.11.9',         c:'' },
+      { l:'Global ASNs',    v:'2 (very low)',      c:'kv-highlight' },
+      { l:'Category',       v:'Uncategorized',     c:'' }
+    ],
+    tags: [
+      { t:'Newly Registered Domain (3d)', c:'tag-context' },
+      { t:'Privacy-Protected Registrar', c:'tag-context' },
+      { t:'Mimics Telemetry Infrastructure', c:'tag-context' }
+    ],
+    nextQ: 'Is telemetry-api[.]io referenced in any uploaded mission documents or the approved vendor list? Does 10.4.11.9 have a documented role that requires external telemetry calls?',
+    log: '{ "ts":"2026-05-29T12:58:33Z", "query":"telemetry-api.io", "qtype_name":"A", "rcode_name":"NOERROR", "answers":["104.21.7.81"], "id.orig_h":"10.4.11.9" }'
+  },
+  {
+    id: 'EVT-0035', sev: 'medium', sevLabel: 'Medium',
+    title: 'Suricata — ET SCAN Nmap',
+    agent: 'Threat Intel Correlation Agent', time: '12:30',
+    snippet: 'Internal host 10.4.0.44 scanning 230 hosts (VLAN40)',
+    explanation: 'Suricata fired 12 ET SCAN alerts consistent with Nmap service fingerprinting originating from 10.4.0.44, a server-tier host in VLAN40. Server-class assets should not initiate broad internal scans. Either the host is compromised and being used as a pivot point, or an administrator is performing an unauthorized assessment.',
+    enrichment: [
+      { l:'Source',         v:'10.4.0.44',         c:'kv-highlight' },
+      { l:'Suricata SID',   v:'2010936',           c:'' },
+      { l:'Signature',      v:'ET SCAN Nmap UA',   c:'' },
+      { l:'VLAN',           v:'VLAN40 — Servers',  c:'' },
+      { l:'Hosts Scanned',  v:'230 unique IPs',    c:'kv-highlight' },
+      { l:'Alert Count',    v:'12 triggers',       c:'' }
+    ],
+    tags: [
+      { t:'Internal Lateral Scanner', c:'tag-context' },
+      { t:'Server-Class Host — Unexpected Behaviour', c:'tag-context' }
+    ],
+    nextQ: 'Is 10.4.0.44 listed as an authorized vulnerability scanner in the asset list? If not, check Sysmon for nmap.exe, masscan.exe, or any scanning tool launched on that host.',
+    log: '{ "ts":"2026-05-29T12:30:05Z", "src_ip":"10.4.0.44", "dest_ip":"10.4.1.14", "signature":"ET SCAN Nmap Scripting Engine User-Agent Detected", "severity":2, "category":"Attempted Information Leak" }'
+  },
+  {
+    id: 'EVT-0034', sev: 'low', sevLabel: 'Low',
+    title: 'New Domain — Known CDN',
+    agent: 'New Domain Agent', time: '11:44',
+    snippet: 'cdn-assets-42[.]fastly-edge.net — first-seen, Fastly CDN',
+    explanation: 'A Fastly CDN subdomain was observed for the first time in DNS logs from 10.4.2.21. The domain resolves to a verified Fastly IP range, the parent domain is well-established, and there are no threat intelligence associations. Logged for completeness as a new domain per policy.',
+    enrichment: [
+      { l:'Domain',         v:'cdn-assets-42.fastly-edge.net', c:'' },
+      { l:'Provider',       v:'Fastly CDN',         c:'kv-ok' },
+      { l:'Queried By',     v:'10.4.2.21',          c:'' },
+      { l:'Resolved IP',    v:'151.101.0.0/16',     c:'kv-ok' },
+      { l:'TI Hits',        v:'0',                  c:'kv-ok' },
+      { l:'Risk Score',     v:'Low (1/10)',          c:'kv-ok' }
+    ],
+    tags: [
+      { t:'Fastly CDN — Known Provider', c:'tag-context' },
+      { t:'Zero Threat Intelligence Hits', c:'tag-context' }
+    ],
+    nextQ: 'Which application on 10.4.2.21 is requesting CDN assets? Correlate with HTTP logs to confirm expected browser or application traffic. No escalation recommended unless correlation shows anomaly.',
+    log: '{ "ts":"2026-05-29T11:44:22Z", "query":"cdn-assets-42.fastly-edge.net", "qtype_name":"A", "rcode_name":"NOERROR", "answers":["151.101.1.44"], "id.orig_h":"10.4.2.21" }'
+  }
+];
+
+/* ═══════════════════════════════════════
+   DATA — CASES
+═══════════════════════════════════════ */
+const CASES = [
+  {
+    id: 'CASE-007', name: 'APT41 Staging Domain Activity', status: 'review',
+    owner: 'M. Rivera', opened: '13:22', events: 2,
+    summary: 'DNS queries to known APT41 staging domain update-cdn[.]net resolved to active infrastructure. Cross-correlated with uploaded Q1 Intel Report. Awaiting confirmation of follow-on TCP connections before escalating to ASOM.',
+    iocs: ['update-cdn[.]net', '91.108.56.200', '10.4.3.55']
+  },
+  {
+    id: 'CASE-006', name: 'Beaconing Host 10.4.22.17', status: 'open',
+    owner: 'J. Kim', opened: '14:35', events: 1,
+    summary: 'Internal host confirmed beaconing to TOR exit node on 300-second interval. Host has been isolated pending Sysmon log review. IP matches APT41 C2 range from intel report. Likely related to CASE-007.',
+    iocs: ['10.4.22.17', '185.220.101.47', 'TOR Exit Node']
+  },
+  {
+    id: 'CASE-005', name: 'Internal Nmap — Source Investigation', status: 'open',
+    owner: 'T. Patel', opened: '12:33', events: 1,
+    summary: 'Server 10.4.0.44 (VLAN40) triggering Nmap scan signatures against 230 internal hosts. Asset list check shows no authorized scanner role. Awaiting AD query to identify host owner and recent login history.',
+    iocs: ['10.4.0.44', 'ET SCAN SID 2010936']
+  },
+  {
+    id: 'CASE-004', name: 'DGA Cluster — 10.4.19.3', status: 'open',
+    owner: 'J. Kim', opened: '14:20', events: 1,
+    summary: 'Endpoint querying 14 DGA domains via external resolver. No successful resolutions yet. Likely same threat actor as beaconing case — both hosts may be compromised. Recommend host isolation and memory acquisition.',
+    iocs: ['10.4.19.3', 'xkqvrtmnpzl.net', 'DGA score 0.94']
+  }
+];
+
+/* ═══════════════════════════════════════
+   DATA — COMMANDER
+═══════════════════════════════════════ */
+const ASOM_LINES = [
+  { n:'1.1', t:'Identify all external C2 communications in target network',       s:'done' },
+  { n:'1.2', t:'Enumerate first-seen external IPs and associated ASNs',           s:'done' },
+  { n:'1.3', t:'Profile DNS activity for DGA and newly-registered domain patterns',s:'done' },
+  { n:'2.1', t:'Correlate SSL/TLS fingerprints against known malware families',   s:'done' },
+  { n:'2.2', t:'Identify beaconing hosts and calculate callback intervals',        s:'active' },
+  { n:'2.3', t:'Cross-reference all observables against APT41 intel report',      s:'done' },
+  { n:'3.1', t:'Assess scope of potential APT41 compromise across all hosts',     s:'active' },
+  { n:'3.2', t:'Document all confirmed IOCs for client reporting deliverable',    s:'pending' },
+  { n:'3.3', t:'Determine lateral movement pathways if present',                  s:'pending' }
+];
+
+const ACTORS = [
+  { name:'APT41',      detail:'Confirmed — Intel Match + C2 Infra + Staging Domain', conf:'94%' },
+  { name:'Unknown TA', detail:'Cobalt Strike operator — unattributed, possible APT41', conf:'67%' },
+  { name:'Insider/Scanner TA', detail:'Unauthorized internal scan — insider or pivot', conf:'41%' }
+];
+
+const FEED = [
+  { time:'14:32', color:'red',   agent:'Beaconing Agent',          text:'C2 beacon confirmed — 10.4.22.17 → 185.220.101.47',   tag:'CRITICAL' },
+  { time:'14:18', color:'red',   agent:'DGA Agent',                text:'DGA cluster — 14 domains from 10.4.19.3',             tag:'CRITICAL' },
+  { time:'13:55', color:'amber', agent:'JA3/JA4 Agent',            text:'Cobalt Strike JA3 match — 10.4.8.102:8443',           tag:'HIGH' },
+  { time:'13:41', color:'amber', agent:'New External IP Agent',    text:'BPH scanner 203.0.113.88 — 14.2K connections',        tag:'HIGH' },
+  { time:'13:20', color:'amber', agent:'Threat Intel Agent',       text:'APT41 exact IoC match — update-cdn[.]net',            tag:'HIGH' },
+  { time:'12:58', color:'blue',  agent:'New Domain Agent',         text:'Low-rep NRD — telemetry-api[.]io (3d old)',           tag:'MED' },
+  { time:'12:30', color:'blue',  agent:'Threat Intel Agent',       text:'ET SCAN Nmap fired — internal 10.4.0.44',             tag:'MED' },
+  { time:'11:44', color:'green', agent:'New Domain Agent',         text:'New CDN subdomain — Fastly, low risk',                tag:'LOW' }
+];
+
+const AGENT_TABLE = [
+  { a:'Beaconing Agent',           n:4, s:'active' },
+  { a:'DGA Agent',                 n:3, s:'active' },
+  { a:'JA3/JA4 Agent',             n:5, s:'active' },
+  { a:'New External IP Agent',     n:3, s:'active' },
+  { a:'Threat Intel Agent',        n:6, s:'active' },
+  { a:'New Domain Agent',          n:2, s:'active' },
+  { a:'ASOM Drafting Agent',       n:0, s:'standby' }
+];
+
+/* ═══════════════════════════════════════
+   RENDER — EVENTS
+═══════════════════════════════════════ */
+function renderAll() { renderEvents(); renderDrawer(); renderCommander(); }
+
+function renderEvents() {
+  const list = document.getElementById('eventList');
+  list.innerHTML = '';
+  EVENTS.forEach((ev, i) => {
+    const row = document.createElement('div');
+    row.className = 'event-row ' + ev.sev;
+    row.id = 'evrow-' + i;
+    row.onclick = () => selectEvent(i);
+    row.innerHTML = `
+      <div class="event-row-top">
+        <div class="event-title">${i < 2 ? '<span class="new-indicator"></span>' : ''}${ev.title}</div>
+        <span class="sev-badge ${ev.sev}">${ev.sevLabel}</span>
+      </div>
+      <div class="event-snippet">${ev.snippet}</div>
+      <div class="event-meta">
+        <span class="event-agent">${ev.agent}</span>
+        <span class="event-time">${ev.time}</span>
+      </div>`;
+    list.appendChild(row);
+  });
+}
+
+function selectEvent(i) {
+  document.querySelectorAll('.event-row').forEach(r => r.classList.remove('selected'));
+  document.getElementById('evrow-' + i).classList.add('selected');
+
+  const ev = EVENTS[i];
+  document.getElementById('detailEmpty').style.display = 'none';
+  const content = document.getElementById('detailContent');
+  content.classList.add('visible');
+
+  const kvHTML = ev.enrichment.map(k =>
+    `<div class="detail-kv">
+      <div class="detail-kv-key">${k.l}</div>
+      <div class="detail-kv-val ${k.c}">${k.v}</div>
+    </div>`
+  ).join('');
+
+  const tagsHTML = ev.tags.map(t => `<span class="enrich-tag ${t.c}">${t.t}</span>`).join('');
+
+  content.innerHTML = `
+    <div class="detail-header">
+      <div class="detail-title-block">
+        <div class="detail-eyebrow">${ev.id} &nbsp;·&nbsp; ${ev.agent} &nbsp;·&nbsp; ${ev.time}</div>
+        <div class="detail-title">${ev.title}</div>
+      </div>
+      <div class="detail-actions">
+        <button class="btn btn-sm btn-log-toggle" id="logBtn" onclick="toggleLog()">Show Log</button>
+        <button class="btn btn-sm btn-dismiss" onclick="dismissEvent(${i})">Dismiss</button>
+        <button class="btn btn-sm btn-escalate" onclick="escalateEvent(${i})">Escalate →</button>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-section-label">Agent Explanation</div>
+      <div class="detail-text">${ev.explanation}</div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-section-label">Key Fields</div>
+      <div class="detail-kv-grid">${kvHTML}</div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-section-label">Enrichment &amp; Context</div>
+      <div class="enrichment-tags">${tagsHTML}</div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-section-label">Recommended Next Question</div>
+      <div class="next-question">
+        <div class="next-q-label">⬡ Agent Recommends</div>
+        <div class="next-q-text">${ev.nextQ}</div>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-section-label">Raw Log Sample</div>
+      <div class="log-snippet" id="logSnippet">${ev.log}</div>
+    </div>`;
+}
+
+function toggleLog() {
+  const s = document.getElementById('logSnippet');
+  const b = document.getElementById('logBtn');
+  const v = s.classList.toggle('log-visible');
+  b.textContent = v ? 'Hide Log' : 'Show Log';
+}
+
+function dismissEvent(i) {
+  const r = document.getElementById('evrow-' + i);
+  r.style.opacity = '0.3';
+  r.style.pointerEvents = 'none';
+  document.getElementById('detailEmpty').style.display = 'flex';
+  document.getElementById('detailContent').classList.remove('visible');
+}
+
+function escalateEvent(i) {
+  const r = document.getElementById('evrow-' + i);
+  r.style.borderLeft = '3px solid var(--blue)';
+  const b = document.querySelector('.btn-escalate');
+  if (b) { b.textContent = '✓ Escalated'; b.style.background = 'var(--green)'; }
+}
+
+function setFilter(el) {
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active','crit','high-f'));
+  el.classList.add('active');
+}
+
+/* ═══════════════════════════════════════
+   RENDER — CASES DRAWER
+═══════════════════════════════════════ */
+let drawerOpen = false;
+
+function toggleDrawer() {
+  drawerOpen = !drawerOpen;
+  document.getElementById('casesDrawer').classList.toggle('open', drawerOpen);
+}
+
+function renderDrawer() {
+  document.getElementById('drawerBody').innerHTML = CASES.map(c => `
+    <div class="case-row">
+      <div class="case-id">${c.id}</div>
+      <div style="flex:1">
+        <div class="case-name">${c.name}</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text-muted);margin-top:3px;">${c.owner} &nbsp;·&nbsp; opened ${c.opened} &nbsp;·&nbsp; ${c.events} event${c.events!==1?'s':''}</div>
+        <div style="font-size:12px;color:var(--text-dim);margin-top:5px;line-height:1.4;">${c.summary}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;">
+          ${c.iocs.map(ioc => `<span style="font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:2px;background:var(--red-glow);border:1px solid var(--red-dim);color:var(--red);">${ioc}</span>`).join('')}
+        </div>
+      </div>
+      <span class="case-status cs-${c.status}">${c.status}</span>
+    </div>`).join('');
+}
+
+/* ═══════════════════════════════════════
+   RENDER — COMMANDER
+═══════════════════════════════════════ */
+function renderCommander() {
+  document.getElementById('asomList').innerHTML = ASOM_LINES.map(a => `
+    <div class="asom-line-row">
+      <div class="asom-num">${a.n}</div>
+      <div class="asom-text">${a.t}</div>
+      <span class="asom-status as-${a.s}">${a.s}</span>
+    </div>`).join('');
+
+  document.getElementById('actorList').innerHTML = ACTORS.map(a => `
+    <div class="actor-row">
+      <div class="actor-icon">⚠</div>
+      <div>
+        <div class="actor-name">${a.name}</div>
+        <div class="actor-detail">${a.detail}</div>
+      </div>
+      <div class="actor-conf">${a.conf}</div>
+    </div>`).join('');
+
+  document.getElementById('agentFeed').innerHTML = FEED.map((f, i) => `
+    <div class="feed-row">
+      <div class="feed-time">${f.time}</div>
+      <div class="feed-dot-col">
+        <div class="feed-dot ${f.color}"></div>
+        ${i < FEED.length - 1 ? '<div class="feed-line"></div>' : ''}
+      </div>
+      <div class="feed-body">
+        <div class="feed-agent">${f.agent}</div>
+        <div class="feed-text">${f.text} <span class="feed-tag">${f.tag}</span></div>
+      </div>
+    </div>`).join('');
+
+  document.getElementById('eventsTableBody').innerHTML = AGENT_TABLE.map(a => `
+    <tr>
+      <td>${a.a}</td>
+      <td>${a.n}</td>
+      <td><span class="asom-status as-${a.s}">${a.s}</span></td>
+    </tr>`).join('');
+}
+
+/* ═══════════════════════════════════════
+   INIT
+═══════════════════════════════════════ */
+// Live clock for commander
+function updateClock() {
+  const el = document.getElementById('cmdTimestamp');
+  if (el) el.textContent = new Date().toLocaleTimeString('en-GB', {
+    hour:'2-digit', minute:'2-digit', second:'2-digit'
+  }) + ' UTC';
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// Auto-run status check on deploy screen load
+setTimeout(() => {
+  document.querySelectorAll('.status-val').forEach((el, i) => {
+    setTimeout(() => {
+      el.className = 'status-val online';
+      el.textContent = 'Online';
+    }, i * 180);
+  });
+}, 600);
+</script>
+<script>const __launch=window.launchHunt;window.launchHunt=async function(){try{let b=await(await fetch('/api/setup/launch',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json();window.__spotterSession=b.data.session_id}catch(e){};return __launch?__launch():null};window.openAnalyst=()=>location.href='/operations.html?view=analyst&session_id='+(window.__spotterSession||'demo');window.openCommander=()=>location.href='/operations.html?view=commander&session_id='+(window.__spotterSession||'demo');</script></body>
+</html>
