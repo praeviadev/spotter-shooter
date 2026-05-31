@@ -39,15 +39,8 @@ services:
     image: caddy:2-alpine
     container_name: spotter-caddy
     depends_on: [api]
+    ports:
+      - "127.0.0.1:8097:80"
     volumes: [./caddy/Caddyfile:/etc/caddy/Caddyfile:ro]
-    networks: [default, traefik]
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik
-      - traefik.http.routers.spotter.entrypoints=websecure
-      - traefik.http.routers.spotter.rule=Host(`${APP_HOST:-spotter.praeviaintel.com}`)
-      - traefik.http.routers.spotter.tls.certresolver=le
-      - traefik.http.services.spotter.loadbalancer.server.port=80
     restart: unless-stopped
 volumes: {spotter_postgres: {}, spotter_qdrant: {}, spotter_minio: {}}
-networks: {traefik: {external: true}}
