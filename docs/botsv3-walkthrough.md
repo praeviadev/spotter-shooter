@@ -12,13 +12,9 @@ Loaded index:
 
 ## Access
 
-Kibana:
+Use a Kibana/Elastic instance you control. The public repository does not connect to the maintainer's private lab.
 
-```text
-https://kibana.praeviaintel.com/app/discover
-```
-
-In Spotter-Shooter deployment flow, use:
+In Spotter-Shooter deployment flow, use your own Elastic endpoint. For a local lab, for example:
 
 ```text
 Elastic URL: http://127.0.0.1
@@ -26,7 +22,7 @@ Port: 9209
 Index pattern: botsv3-*,apt29-*,apt3-*,lsass-*
 ```
 
-When running inside Spotter-Shooter Docker, `127.0.0.1:9209` is translated to the internal Elastic container.
+When running inside Spotter-Shooter Docker, make sure the API container can reach your Elastic endpoint. For local Docker labs, attach both stacks to a shared Docker network or use a reachable hostname.
 
 ## Baseline validation queries
 

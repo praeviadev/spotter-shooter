@@ -4,11 +4,11 @@
 
 Use this guide to compare human analyst hunting performance against Spotter-Shooter agents on the imported APT29/MITRE ATT&CK evaluation telemetry.
 
-Elastic/Kibana lab:
+Elastic/Kibana lab requirements:
 
-- Kibana: `https://kibana.praeviaintel.com/app/discover`
+- Use an Elastic/Kibana instance you control.
 - Primary data views: `apt29-*`, `apt29-endpoint`, `apt29-zeek`
-- Loaded APT29 volume:
+- Reference APT29 volume from the internal evaluation lab:
   - `apt29-endpoint`: 783,367 events
   - `apt29-zeek`: 7,804 events
   - Total: 791,171 events
@@ -94,8 +94,9 @@ Required deliverables:
 
 Run Spotter-Shooter deployment flow with:
 
-- Elastic URL: `http://127.0.0.1:9209` when SSH-forwarded/local to the server.
-- User/pass can be provided in the form if testing the same path as Kibana basic-auth, but the internal Elastic service itself has xpack security disabled.
+- Elastic URL: your own Elastic endpoint, for example `http://127.0.0.1:9209` for a local lab.
+- User/pass or API key if your Elastic requires authentication.
+- Index pattern: `apt29-*` or the names you used during import.
 - Enable default network agents and optional host agents for PowerShell/Sysmon.
 
 Then record:

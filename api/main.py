@@ -91,10 +91,6 @@ def _safe_es_url(url: str) -> str:
     parsed = urlparse((url or "").strip())
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         return settings.elasticsearch_url.rstrip("/")
-    # The public browser may submit localhost/127.0.0.1 because the operator is SSH-forwarding.
-    # Inside Docker, route that to the Elastic container on the shared internal network.
-    if parsed.hostname in {"127.0.0.1", "localhost"} and str(parsed.port or "") in {"9209", "9200"}:
-        return "http://apt29-elasticsearch:9200"
     return (url or settings.elasticsearch_url).rstrip("/")
 
 

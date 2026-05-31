@@ -43,18 +43,13 @@ A guided deployment workflow for mission setup:
 - agent selection
 - hunt launch
 
-### Live Elastic-backed hunting
+### Bring-your-own Elastic hunting lab
 
-The MVP is wired to a local Elastic/Kibana hunting lab containing over **3.2 million searchable security events**:
+Spotter-Shooter is designed to connect to an operator-controlled Elastic/Kibana lab. The public repository does **not** connect to any private hosted telemetry system by default.
 
-- **BOTSv3:** 1,857,913 events
-- **APT29 / MITRE ATT&CK evaluation:** 791,171 events
-- **LSASS campaign telemetry:** 364,466 events
-- **APT3:** 223,563 events
-- **Log4Shell:** 674 events
-- **Golden SAML / ADFS:** 52 events
+For the internal evaluation demo, the platform was tested against an Elastic lab containing over **3.2 million searchable security events** from BOTSv3, APT29, APT3, LSASS campaigns, Log4Shell, and Golden SAML/ADFS datasets. External users should import those datasets into their own Elastic instance or point the deployment wizard at an existing lab they control.
 
-Agents query real indexed telemetry, not only frontend mock cards.
+Agents query whichever Elastic endpoint and index patterns the operator configures during deployment. This keeps private data private and makes the project reproducible in air-gapped or customer-controlled environments.
 
 ### OpenRouter-backed agent summaries
 
@@ -297,9 +292,24 @@ Use these to compare:
 
 ---
 
+## Elastic data model
+
+The recommended model is **bring your own Elastic**.
+
+Why this is better than shipping a preloaded Elastic stack in the default deployment:
+
+- BOTSv3 and APT datasets are large; automatic import can take significant time, disk, and memory.
+- Some environments need air-gapped or customer-controlled data handling.
+- Public users should never be pointed at a maintainer's private lab.
+- Teams can compare analysts and agents against their own telemetry or against locally imported public datasets.
+
+For convenience, this repository includes evaluation guides for APT29 and BOTSv3, but the dataset import is intentionally an operator-controlled setup step rather than an automatic connection to a hosted lab.
+
+---
+
 ## SSH forwarding demo mode
 
-This deployment is intentionally bound to server loopback only. It is not publicly served.
+The demo deployment can be bound to server loopback only. It does not need to be publicly served.
 
 Forward the app from a workstation:
 
