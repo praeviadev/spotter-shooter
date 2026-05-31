@@ -1283,442 +1283,103 @@ body::before {
 
 
 <script>
-/* ─────────────────────────────────
-   DATA
-───────────────────────────────── */
-const EVENTS = [
-  {
-    id: 'EVT-0041', sev: 'crit', sevLabel: 'Critical',
-    title: 'C2 Beacon Detected',
-    agent: 'Beaconing Agent',
-    time: '14:32',
-    snippet: 'Host 10.4.22.17 → 185.220.101.47 every 300s ± 2s',
-    explanation: 'A host on the internal network has been making outbound connections to an external IP on port 443 at near-perfect 300-second intervals for the past 6 hours. The timing regularity (±2 seconds) is inconsistent with human-generated traffic and strongly indicative of automated callback behavior from implanted malware.',
-    enrichment: [
-      { label: 'Source IP', val: '10.4.22.17', cls: '' },
-      { label: 'Dest IP', val: '185.220.101.47', cls: 'danger' },
-      { label: 'Port', val: '443 / TCP', cls: '' },
-      { label: 'Interval', val: '300s ± 2s', cls: 'highlight' },
-      { label: 'Duration', val: '6h 14m', cls: 'highlight' },
-      { label: 'Bytes Out', val: '2.1 KB avg', cls: '' },
-    ],
-    tags: [
-      { label: '185.220.101.47 — TOR Exit Node', cls: 'ioc' },
-      { label: 'APT41 C2 Range (Intel Report)', cls: 'intel' },
-      { label: 'ASOM Priority Target', cls: 'context' },
-    ],
-    nextQ: 'What processes on 10.4.22.17 are responsible for the outbound connections? Are there corresponding Sysmon events showing a suspicious parent process?',
-    log: `{<span class="log-key">"ts"</span>: <span class="log-str">"2026-05-29T14:32:11Z"</span>, <span class="log-key">"id.orig_h"</span>: <span class="log-str">"10.4.22.17"</span>, <span class="log-key">"id.resp_h"</span>: <span class="log-str">"185.220.101.47"</span>, <span class="log-key">"id.resp_p"</span>: <span class="log-val">443</span>, <span class="log-key">"proto"</span>: <span class="log-str">"tcp"</span>, <span class="log-key">"duration"</span>: <span class="log-val">0.412</span>, <span class="log-key">"orig_bytes"</span>: <span class="log-val">2108</span>, <span class="log-key">"resp_bytes"</span>: <span class="log-val">512</span>}`
-  },
-  {
-    id: 'EVT-0040', sev: 'crit', sevLabel: 'Critical',
-    title: 'DGA Domain Cluster',
-    agent: 'DGA Agent',
-    time: '14:18',
-    snippet: '14 algorithmically-generated domains queried from 10.4.19.3',
-    explanation: 'A single endpoint has queried 14 domains within a 20-minute window that score above 0.91 on the DGA entropy model. Domain names exhibit high n-gram entropy and no Alexa top-1M overlap. Pattern is consistent with Supernova or similar DGA-based C2 families.',
-    enrichment: [
-      { label: 'Source Host', val: '10.4.19.3', cls: '' },
-      { label: 'Domain Count', val: '14', cls: 'danger' },
-      { label: 'Avg Entropy', val: '4.31 bits', cls: 'highlight' },
-      { label: 'Window', val: '20 minutes', cls: '' },
-      { label: 'NXDOMAIN Rate', val: '86%', cls: 'danger' },
-      { label: 'Resolver', val: '8.8.8.8 (External)', cls: 'highlight' },
-    ],
-    tags: [
-      { label: 'DGA Confidence: 0.94', cls: 'ioc' },
-      { label: 'Supernova Family (Intel)', cls: 'intel' },
-      { label: 'Using External DNS Resolver', cls: 'context' },
-    ],
-    nextQ: 'What is the full list of queried domains, and have any resolved to an IP? Has the endpoint attempted connections on port 80 or 443 following successful resolutions?',
-    log: `{<span class="log-key">"ts"</span>: <span class="log-str">"2026-05-29T14:18:44Z"</span>, <span class="log-key">"query"</span>: <span class="log-str">"xkqvrtmnpzl.net"</span>, <span class="log-key">"qtype_name"</span>: <span class="log-str">"A"</span>, <span class="log-key">"rcode_name"</span>: <span class="log-str">"NXDOMAIN"</span>, <span class="log-key">"id.orig_h"</span>: <span class="log-str">"10.4.19.3"</span>}`
-  },
-  {
-    id: 'EVT-0039', sev: 'high', sevLabel: 'High',
-    title: 'Suspicious JA3 Fingerprint',
-    agent: 'JA3/JA4 Agent',
-    time: '13:55',
-    snippet: 'JA3: 51c64c77e60f3980eea90869b68c58a8 matched Cobalt Strike',
-    explanation: 'An outbound TLS connection from 10.4.8.102 presented a JA3 fingerprint associated with Cobalt Strike\'s default malleable C2 profile. This fingerprint has been observed in multiple red team engagements and active threat campaigns. The destination IP is not in any approved cloud provider range.',
-    enrichment: [
-      { label: 'Source', val: '10.4.8.102', cls: '' },
-      { label: 'Destination', val: '45.142.212.100', cls: 'danger' },
-      { label: 'JA3 Hash', val: '51c64c77...', cls: 'highlight' },
-      { label: 'Match', val: 'Cobalt Strike', cls: 'danger' },
-      { label: 'Cert CN', val: 'selfhosted.local', cls: 'highlight' },
-      { label: 'Port', val: '8443', cls: '' },
-    ],
-    tags: [
-      { label: 'Cobalt Strike JA3 Match', cls: 'ioc' },
-      { label: 'Self-Signed Certificate', cls: 'ioc' },
-      { label: 'Non-standard Port 8443', cls: 'context' },
-    ],
-    nextQ: 'Is 10.4.8.102 a known managed endpoint? Has it exhibited any Sysmon process activity consistent with a Cobalt Strike stager or beacon in the same timeframe?',
-    log: `{<span class="log-key">"ts"</span>: <span class="log-str">"2026-05-29T13:55:09Z"</span>, <span class="log-key">"id.orig_h"</span>: <span class="log-str">"10.4.8.102"</span>, <span class="log-key">"id.resp_h"</span>: <span class="log-str">"45.142.212.100"</span>, <span class="log-key">"ja3"</span>: <span class="log-str">"51c64c77e60f3980eea90869b68c58a8"</span>, <span class="log-key">"server_name"</span>: <span class="log-str">"selfhosted.local"</span>}`
-  },
-  {
-    id: 'EVT-0038', sev: 'high', sevLabel: 'High',
-    title: 'New External IP — High Volume',
-    agent: 'New External IP Agent',
-    time: '13:41',
-    snippet: '203.0.113.88 first seen — 14,200 inbound connections in 1h',
-    explanation: 'IP address 203.0.113.88 appeared for the first time in connection logs and immediately generated over 14,000 inbound connections across 47 internal hosts within one hour. The IP resolves to an ASN associated with bulletproof hosting. Volume and breadth suggest automated scanning or initial access brokering activity.',
-    enrichment: [
-      { label: 'Source IP', val: '203.0.113.88', cls: 'danger' },
-      { label: 'ASN', val: 'AS209103 (BPH)', cls: 'danger' },
-      { label: 'Connections', val: '14,200 / 1h', cls: 'highlight' },
-      { label: 'Unique Targets', val: '47 hosts', cls: 'highlight' },
-      { label: 'First Seen', val: '13:41 today', cls: '' },
-      { label: 'Country', val: 'RU', cls: '' },
-    ],
-    tags: [
-      { label: 'Bulletproof Hosting ASN', cls: 'ioc' },
-      { label: 'First-seen IP', cls: 'context' },
-      { label: 'Scanning Behaviour', cls: 'context' },
-    ],
-    nextQ: 'Which internal services are being targeted? Are any of the 47 hosts externally reachable, and have any connections been accepted rather than rejected?',
-    log: `{<span class="log-key">"ts"</span>: <span class="log-str">"2026-05-29T13:41:00Z"</span>, <span class="log-key">"id.orig_h"</span>: <span class="log-str">"203.0.113.88"</span>, <span class="log-key">"conn_state"</span>: <span class="log-str">"S0"</span>, <span class="log-key">"orig_bytes"</span>: <span class="log-val">0</span>, <span class="log-key">"missed_bytes"</span>: <span class="log-val">0</span>}`
-  },
-  {
-    id: 'EVT-0037', sev: 'high', sevLabel: 'High',
-    title: 'Threat Intel Match — APT41',
-    agent: 'Threat Intel Correlation Agent',
-    time: '13:20',
-    snippet: 'Domain update-cdn[.]net matches APT41 indicator from Intel Report',
-    explanation: 'A DNS query for update-cdn[.]net was observed from an internal host. This domain appears verbatim in the uploaded APT41 intelligence report as a known staging domain used in Operation ShadowHarvest. The domain is currently resolving to an IP in a previously unseen ASN.',
-    enrichment: [
-      { label: 'Domain', val: 'update-cdn[.]net', cls: 'danger' },
-      { label: 'Intel Source', val: 'APT41 Report', cls: 'highlight' },
-      { label: 'Operation', val: 'ShadowHarvest', cls: 'danger' },
-      { label: 'Queried By', val: '10.4.3.55', cls: '' },
-      { label: 'Resolved IP', val: '91.108.56.200', cls: '' },
-      { label: 'Match Confidence', val: 'Exact', cls: 'ok' },
-    ],
-    tags: [
-      { label: 'APT41 IoC — Exact Match', cls: 'intel' },
-      { label: 'Op ShadowHarvest Infra', cls: 'intel' },
-      { label: 'Successful DNS Resolution', cls: 'ioc' },
-    ],
-    nextQ: 'Has 10.4.3.55 made any TCP connections to 91.108.56.200 following the DNS resolution? What user or service account is associated with this endpoint?',
-    log: `{<span class="log-key">"ts"</span>: <span class="log-str">"2026-05-29T13:20:17Z"</span>, <span class="log-key">"query"</span>: <span class="log-str">"update-cdn.net"</span>, <span class="log-key">"answers"</span>: [<span class="log-str">"91.108.56.200"</span>], <span class="log-key">"rcode_name"</span>: <span class="log-str">"NOERROR"</span>}`
-  },
-  {
-    id: 'EVT-0036', sev: 'medium', sevLabel: 'Medium',
-    title: 'New Domain — Low Reputation',
-    agent: 'New Domain Agent',
-    time: '12:58',
-    snippet: 'telemetry-api[.]io registered 3 days ago, first queried internally',
-    explanation: 'A newly registered domain was queried internally for the first time. The domain was registered 3 days ago with a privacy-protected registrar and has no prior observation in DNS logs. Passive DNS shows it has only received queries from two distinct ASNs globally, suggesting it is not yet broadly known.',
-    enrichment: [
-      { label: 'Domain', val: 'telemetry-api[.]io', cls: 'highlight' },
-      { label: 'Registered', val: '3 days ago', cls: 'highlight' },
-      { label: 'Queried By', val: '10.4.11.9', cls: '' },
-      { label: 'Global Queries', val: '2 ASNs', cls: '' },
-      { label: 'Category', val: 'Uncategorized', cls: '' },
-      { label: 'Cert Issuer', val: "Let's Encrypt", cls: '' },
-    ],
-    tags: [
-      { label: 'Newly Registered Domain', cls: 'context' },
-      { label: 'Privacy Registrar', cls: 'context' },
-    ],
-    nextQ: 'Is telemetry-api[.]io referenced in any uploaded mission documents or asset lists? Does the querying host have a legitimate reason to contact external telemetry services?',
-    log: `{<span class="log-key">"ts"</span>: <span class="log-str">"2026-05-29T12:58:33Z"</span>, <span class="log-key">"query"</span>: <span class="log-str">"telemetry-api.io"</span>, <span class="log-key">"rcode_name"</span>: <span class="log-str">"NOERROR"</span>, <span class="log-key">"id.orig_h"</span>: <span class="log-str">"10.4.11.9"</span>}`
-  },
-  {
-    id: 'EVT-0035', sev: 'medium', sevLabel: 'Medium',
-    title: 'Suricata — ET SCAN',
-    agent: 'Threat Intel Correlation Agent',
-    time: '12:30',
-    snippet: 'ET SCAN Nmap — 12:30, source 10.4.0.44',
-    explanation: 'Suricata fired an ET SCAN signature consistent with Nmap fingerprinting activity originating from an internal host. The source is an internal server in VLAN 40, which should not be performing network scanning. Either the host has been compromised and used as a pivot point, or there is an unauthorized administrator action.',
-    enrichment: [
-      { label: 'Source', val: '10.4.0.44', cls: 'highlight' },
-      { label: 'Signature', val: 'ET SCAN Nmap', cls: '' },
-      { label: 'VLAN', val: 'VLAN40 (Servers)', cls: '' },
-      { label: 'Targets Scanned', val: '230 hosts', cls: 'highlight' },
-      { label: 'Suricata SID', val: '2010936', cls: '' },
-      { label: 'Alert Count', val: '12', cls: '' },
-    ],
-    tags: [
-      { label: 'Internal Scanner', cls: 'context' },
-      { label: 'ET SCAN Ruleset', cls: 'context' },
-    ],
-    nextQ: 'Is 10.4.0.44 a known vulnerability scanner or authorized admin host? Check the asset list for this IP. If not authorized, what processes are running on it?',
-    log: `{<span class="log-key">"ts"</span>: <span class="log-str">"2026-05-29T12:30:05Z"</span>, <span class="log-key">"src_ip"</span>: <span class="log-str">"10.4.0.44"</span>, <span class="log-key">"signature"</span>: <span class="log-str">"ET SCAN Nmap Scripting Engine User-Agent"</span>, <span class="log-key">"category"</span>: <span class="log-str">"Attempted Information Leak"</span>}`
-  },
-  {
-    id: 'EVT-0034', sev: 'low', sevLabel: 'Low',
-    title: 'New Domain — CDN',
-    agent: 'New Domain Agent',
-    time: '11:44',
-    snippet: 'cdn-assets-42[.]fastly-edge.net — first internal query',
-    explanation: 'A Fastly CDN subdomain was queried internally for the first time. While CDN subdomains are common and generally low-risk, this specific subdomain has not been previously seen in DNS logs. The domain resolves correctly to a Fastly edge IP. Logged for completeness.',
-    enrichment: [
-      { label: 'Domain', val: 'cdn-assets-42[.]fastly', cls: '' },
-      { label: 'CDN', val: 'Fastly', cls: 'ok' },
-      { label: 'Queried By', val: '10.4.2.21', cls: '' },
-      { label: 'IP Range', val: 'Fastly (Known)', cls: 'ok' },
-      { label: 'Risk', val: 'Low', cls: 'ok' },
-      { label: 'Prior Sightings', val: '0', cls: '' },
-    ],
-    tags: [
-      { label: 'Known CDN Provider', cls: 'context' },
-    ],
-    nextQ: 'Which application or service on 10.4.2.21 initiated the CDN query? Correlate with HTTP logs to confirm this is expected application traffic.',
-    log: `{<span class="log-key">"ts"</span>: <span class="log-str">"2026-05-29T11:44:22Z"</span>, <span class="log-key">"query"</span>: <span class="log-str">"cdn-assets-42.fastly-edge.net"</span>, <span class="log-key">"rcode_name"</span>: <span class="log-str">"NOERROR"</span>}`
-  },
+const params = new URLSearchParams(location.search);
+const state = { sessionId: params.get('session_id') || 'demo', view: params.get('view') || 'analyst' };
+let EVENTS = [];
+let CASES = [];
+let ASOM_LINES = [
+  { n:'1.1', text:'Confirm live telemetry connection and document scope', status:'done' },
+  { n:'1.2', text:'Launch selected agents against searchable BOTSv3/APT data', status:'active' },
+  { n:'2.1', text:'Analyst triage: dismiss or escalate findings', status:'pending' },
+  { n:'3.1', text:'Commander review of active cases and agent output', status:'pending' }
 ];
+let ACTORS = [{ name:'Unknown Operator', detail:'Attribution pending analyst validation', conf:'TBD' }];
+let FEED = [];
+let AGENT_TABLE = [];
 
-const CASES = [
-  { id: 'CASE-007', name: 'APT41 Staging Domain Activity', status: 'review' },
-  { id: 'CASE-006', name: 'Beaconing Host 10.4.22.17', status: 'open' },
-  { id: 'CASE-005', name: 'Internal Nmap Source Investigation', status: 'open' },
-  { id: 'CASE-004', name: 'DGA Cluster 10.4.19.3', status: 'open' },
-];
-
-const ASOM_LINES = [
-  { n: '1.1', text: 'Identify all external C2 communications in target network', status: 'done' },
-  { n: '1.2', text: 'Enumerate first-seen external IPs and associated ASNs', status: 'done' },
-  { n: '1.3', text: 'Profile DNS activity for DGA patterns', status: 'done' },
-  { n: '2.1', text: 'Correlate SSL/TLS fingerprints against known malware families', status: 'done' },
-  { n: '2.2', text: 'Identify beaconing hosts and calculate callback intervals', status: 'active' },
-  { n: '2.3', text: 'Cross-reference all observables against APT41 intel report', status: 'done' },
-  { n: '3.1', text: 'Assess scope of potential APT41 compromise', status: 'active' },
-  { n: '3.2', text: 'Document all confirmed IOCs for client reporting', status: 'pending' },
-  { n: '3.3', text: 'Determine lateral movement pathways if present', status: 'pending' },
-];
-
-const ACTORS = [
-  { name: 'APT41', detail: 'Confirmed via Intel Match · ShadowHarvest', conf: '94% conf' },
-  { name: 'Unknown TA', detail: 'Cobalt Strike operator · unattributed', conf: '67% conf' },
-  { name: 'Scanner TA', detail: 'Internal pivot or unauthorized admin', conf: '41% conf' },
-];
-
-const FEED = [
-  { time: '14:32', color: 'red', agent: 'Beaconing Agent', text: 'New beaconing event — 10.4.22.17 → 185.220.101.47', tag: 'CRITICAL' },
-  { time: '14:18', color: 'red', agent: 'DGA Agent', text: 'DGA cluster detected — 14 domains from 10.4.19.3', tag: 'CRITICAL' },
-  { time: '13:55', color: 'amber', agent: 'JA3/JA4 Agent', text: 'Cobalt Strike JA3 fingerprint matched on 10.4.8.102', tag: 'HIGH' },
-  { time: '13:41', color: 'amber', agent: 'New External IP Agent', text: 'First-seen BPH IP 203.0.113.88 — 14.2K connections', tag: 'HIGH' },
-  { time: '13:20', color: 'amber', agent: 'Threat Intel Agent', text: 'Exact APT41 IoC match — update-cdn[.]net queried', tag: 'HIGH' },
-  { time: '12:58', color: 'blue', agent: 'New Domain Agent', text: 'New low-rep domain — telemetry-api[.]io, 3d old', tag: 'MED' },
-  { time: '12:30', color: 'blue', agent: 'Threat Intel Agent', text: 'Suricata ET SCAN fired — internal host 10.4.0.44', tag: 'MED' },
-  { time: '11:44', color: 'green', agent: 'New Domain Agent', text: 'First-seen CDN subdomain logged — Fastly edge', tag: 'LOW' },
-];
-
-const AGENT_TABLE = [
-  { agent: 'Beaconing Agent', count: 4, status: 'active' },
-  { agent: 'DGA Agent', count: 3, status: 'active' },
-  { agent: 'JA3/JA4 Agent', count: 5, status: 'active' },
-  { agent: 'New External IP Agent', count: 3, status: 'active' },
-  { agent: 'Threat Intel Agent', count: 6, status: 'active' },
-  { agent: 'New Domain Agent', count: 2, status: 'active' },
-  { agent: 'ASOM Drafting Agent', count: 0, status: 'standby' },
-];
-
-/* ─────────────────────────────────
-   RENDER FUNCTIONS
-───────────────────────────────── */
+function escapeHtml(v) { return String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
+function compactTime(v) { try { return new Date(v).toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'}); } catch { return v || ''; } }
+async function api(path, options={}) {
+  const res = await fetch(path, options);
+  const body = await res.json().catch(() => ({success:false,error:'Invalid JSON response'}));
+  if (!res.ok || body.success === false) throw new Error(body.error || `HTTP ${res.status}`);
+  return body.data;
+}
+function normalizeEvent(ev) {
+  return {
+    id: ev.id || ev.event_id,
+    sev: ev.sev || ({critical:'crit', high:'high', medium:'medium', low:'low'}[ev.severity] || 'medium'),
+    sevLabel: ev.sevLabel || (ev.severity || 'medium').toUpperCase(),
+    title: ev.title || 'Untitled Finding',
+    agent: ev.agent || 'agent',
+    time: compactTime(ev.time || ev.created_at),
+    snippet: ev.snippet || '',
+    explanation: ev.explanation || '',
+    enrichment: (ev.enrichment || []).map(x => ({ label:x.label || x.l || 'Field', val:x.val || x.value || x.v || '', cls:x.cls || x.color || x.c || '' })),
+    tags: (ev.tags || []).map(x => ({ label:x.label || x.text || x.t || '', cls:x.cls || x.type || x.c || '' })),
+    nextQ: ev.nextQ || ev.recommended_next_question || 'Review correlated evidence and decide whether to escalate.',
+    log: typeof ev.log === 'string' ? ev.log : JSON.stringify(ev.log || {}, null, 2),
+    status: ev.status || 'new'
+  };
+}
+function normalizeCase(c) { return { id:c.id || c.case_id, name:c.name || 'Untitled Case', status:c.status || 'open', owner:c.owner || 'Unassigned', summary:c.summary || c.narrative_summary || '', iocs:c.iocs || [], opened:compactTime(c.opened || c.created_at), events:c.events || 1 }; }
+async function refreshData() {
+  EVENTS = (await api('/api/events?limit=100&session_id=' + encodeURIComponent(state.sessionId)).catch(() => [])).map(normalizeEvent);
+  CASES = (await api('/api/cases?session_id=' + encodeURIComponent(state.sessionId)).catch(() => [])).map(normalizeCase);
+  FEED = EVENTS.map(ev => ({ time:ev.time, color:ev.sev==='crit'?'red':ev.sev==='high'?'amber':ev.sev==='medium'?'blue':'green', agent:ev.agent, text:ev.title, tag:ev.sevLabel }));
+  const counts = {}; EVENTS.forEach(ev => counts[ev.agent] = (counts[ev.agent] || 0) + 1);
+  AGENT_TABLE = Object.entries(counts).map(([agent,count]) => ({ agent, count, status:'active' }));
+}
 function renderEvents() {
-  const list = document.getElementById('eventList');
-  list.innerHTML = '';
+  const list = document.getElementById('eventList'); list.innerHTML = '';
   EVENTS.forEach((ev, i) => {
     const row = document.createElement('div');
-    row.className = `event-row ${ev.sev}`;
-    row.id = `evrow-${i}`;
-    row.onclick = () => selectEvent(i);
-    row.innerHTML = `
-      <div class="event-row-top">
-        <div class="event-title">${i < 2 ? '<span class="new-indicator"></span>' : ''}${ev.title}</div>
-        <span class="sev-badge ${ev.sev}">${ev.sevLabel}</span>
-      </div>
-      <div class="event-snippet">${ev.snippet}</div>
-      <div class="event-meta">
-        <span class="event-agent">${ev.agent}</span>
-        <span class="event-time">${ev.time}</span>
-      </div>`;
+    row.className = `event-row ${ev.sev}`; row.id = `evrow-${i}`; row.onclick = () => selectEvent(i);
+    row.innerHTML = `<div class="event-row-top"><div class="event-title">${i < 2 ? '<span class="new-indicator"></span>' : ''}${escapeHtml(ev.title)}</div><span class="sev-badge ${ev.sev}">${escapeHtml(ev.sevLabel)}</span></div><div class="event-snippet">${escapeHtml(ev.snippet)}</div><div class="event-meta"><span class="event-agent">${escapeHtml(ev.agent)}</span><span class="event-time">${escapeHtml(ev.time)}</span></div>`;
     list.appendChild(row);
   });
+  const active = EVENTS.filter(e => e.status !== 'dismissed').length;
+  const stat = [...document.querySelectorAll('.stat-card')].find(x => x.textContent.includes('Events Today'))?.querySelector('.stat-value'); if (stat) stat.textContent = active;
 }
-
 function selectEvent(i) {
   document.querySelectorAll('.event-row').forEach(r => r.classList.remove('selected'));
-  document.getElementById(`evrow-${i}`).classList.add('selected');
-
-  const ev = EVENTS[i];
+  const row = document.getElementById(`evrow-${i}`); if(row) row.classList.add('selected');
+  const ev = EVENTS[i]; if(!ev) return;
   document.getElementById('detailEmpty').style.display = 'none';
-  const content = document.getElementById('detailContent');
-  content.classList.add('visible');
-
-  const kvHTML = ev.enrichment.map(k => `
-    <div class="detail-kv">
-      <div class="detail-kv-key">${k.label}</div>
-      <div class="detail-kv-val ${k.cls}">${k.val}</div>
-    </div>`).join('');
-
-  const tagsHTML = ev.tags.map(t => `<span class="enrich-tag ${t.cls}">${t.label}</span>`).join('');
-
-  content.innerHTML = `
-    <div class="detail-header">
-      <div class="detail-title-block">
-        <div class="detail-eyebrow">${ev.id} · ${ev.agent} · ${ev.time}</div>
-        <div class="detail-title">${ev.title}</div>
-      </div>
-      <div class="detail-actions">
-        <button class="btn btn-expand" onclick="toggleLog()" id="logBtn">Show Log</button>
-        <button class="btn btn-dismiss" onclick="dismissEvent(${i})">Dismiss</button>
-        <button class="btn btn-escalate" onclick="escalateEvent(${i})">Escalate →</button>
-      </div>
-    </div>
-
-    <div class="detail-section">
-      <div class="detail-section-label">Agent Explanation</div>
-      <div class="detail-text">${ev.explanation}</div>
-    </div>
-
-    <div class="detail-section">
-      <div class="detail-section-label">Key Fields</div>
-      <div class="detail-kv-grid">${kvHTML}</div>
-    </div>
-
-    <div class="detail-section">
-      <div class="detail-section-label">Enrichment & Context</div>
-      <div class="enrichment-tags">${tagsHTML}</div>
-    </div>
-
-    <div class="detail-section">
-      <div class="detail-section-label">Recommended Next Question</div>
-      <div class="next-question">
-        <div class="next-q-label">⬡ Agent Recommends</div>
-        <div class="next-q-text">${ev.nextQ}</div>
-      </div>
-    </div>
-
-    <div class="detail-section">
-      <div class="detail-section-label">Raw Log Sample</div>
-      <div class="log-snippet" id="logSnippet">${ev.log}</div>
-    </div>
-  `;
+  const content = document.getElementById('detailContent'); content.classList.add('visible');
+  const kvHTML = ev.enrichment.map(k => `<div class="detail-kv"><div class="detail-kv-key">${escapeHtml(k.label)}</div><div class="detail-kv-val ${escapeHtml(k.cls)}">${escapeHtml(k.val)}</div></div>`).join('');
+  const tagsHTML = ev.tags.map(t => `<span class="enrich-tag ${escapeHtml(t.cls)}">${escapeHtml(t.label)}</span>`).join('');
+  content.innerHTML = `<div class="detail-header"><div class="detail-title-block"><div class="detail-eyebrow">${escapeHtml(ev.id)} · ${escapeHtml(ev.agent)} · ${escapeHtml(ev.time)}</div><div class="detail-title">${escapeHtml(ev.title)}</div></div><div class="detail-actions"><button class="btn btn-expand" onclick="toggleLog()" id="logBtn">Show Log</button><button class="btn btn-dismiss" onclick="dismissEvent(${i})">Dismiss</button><button class="btn btn-escalate" onclick="escalateEvent(${i})">Escalate →</button></div></div><div class="detail-section"><div class="detail-section-label">Agent Explanation</div><div class="detail-text">${escapeHtml(ev.explanation)}</div></div><div class="detail-section"><div class="detail-section-label">Key Fields</div><div class="detail-kv-grid">${kvHTML}</div></div><div class="detail-section"><div class="detail-section-label">Enrichment & Context</div><div class="enrichment-tags">${tagsHTML}</div></div><div class="detail-section"><div class="detail-section-label">Recommended Next Question</div><div class="next-question"><div class="next-q-label">⬡ Agent Recommends</div><div class="next-q-text">${escapeHtml(ev.nextQ)}</div></div></div><div class="detail-section"><div class="detail-section-label">Raw Log Sample</div><pre class="log-snippet" id="logSnippet">${escapeHtml(ev.log)}</pre></div>`;
 }
-
-function toggleLog() {
-  const s = document.getElementById('logSnippet');
-  const b = document.getElementById('logBtn');
-  if (s.classList.contains('visible')) {
-    s.classList.remove('visible');
-    b.textContent = 'Show Log';
-  } else {
-    s.classList.add('visible');
-    b.textContent = 'Hide Log';
-  }
-}
-
-function dismissEvent(i) {
-  const row = document.getElementById(`evrow-${i}`);
-  row.style.opacity = '0.35';
-  row.style.pointerEvents = 'none';
-  document.getElementById('detailEmpty').style.display = 'flex';
-  document.getElementById('detailContent').classList.remove('visible');
-}
-
-function escalateEvent(i) {
-  const row = document.getElementById(`evrow-${i}`);
-  row.style.borderLeft = '3px solid var(--blue)';
-  const badge = row.querySelector('.sev-badge');
-  if (badge) { badge.style.background = 'var(--blue-glow)'; badge.style.color = 'var(--blue)'; badge.textContent = 'Escalated'; }
-  // flash confirmation
-  const btn = document.querySelector('.btn-escalate');
-  if (btn) { btn.textContent = '✓ Escalated'; btn.style.background = 'var(--green)'; }
-}
-
-function setFilter(el, f) {
-  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active','crit','high-f'));
-  el.classList.add('active');
-}
-
-/* ─ Cases Drawer ─ */
+function toggleLog() { const s=document.getElementById('logSnippet'), b=document.getElementById('logBtn'); if(!s||!b)return; const v = s.classList.toggle('visible'); b.textContent = v ? 'Hide Log' : 'Show Log'; }
+async function dismissEvent(i) { const ev=EVENTS[i]; if(!ev)return; await fetch('/api/events/'+encodeURIComponent(ev.id)+'/dismiss',{method:'PATCH'}); ev.status='dismissed'; const row=document.getElementById(`evrow-${i}`); if(row){row.style.opacity='0.35';row.style.pointerEvents='none';} document.getElementById('detailEmpty').style.display='flex'; document.getElementById('detailContent').classList.remove('visible'); }
+async function escalateEvent(i) { const ev=EVENTS[i]; if(!ev)return; await fetch('/api/events/'+encodeURIComponent(ev.id)+'/escalate',{method:'PATCH'}); await refreshData(); renderDrawer(); renderCommander(); const row=document.getElementById(`evrow-${i}`); if(row) row.style.borderLeft='3px solid var(--blue)'; const btn=document.querySelector('.btn-escalate'); if(btn){btn.textContent='✓ Escalated'; btn.style.background='var(--green)';} }
+function setFilter(el, f='all') { document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active','crit','high-f')); el.classList.add('active'); document.querySelectorAll('.event-row').forEach((row,i)=>{row.style.display=(f==='all'||EVENTS[i]?.sev===f)?'block':'none';}); }
 function renderDrawer() {
   const body = document.getElementById('drawerBody');
-  body.innerHTML = CASES.map(c => `
-    <div class="case-row">
-      <div class="case-id">${c.id}</div>
-      <div class="case-name">${c.name}</div>
-      <span class="case-status ${c.status}">${c.status}</span>
-    </div>`).join('');
+  body.innerHTML = CASES.length ? CASES.map(c => `<div class="case-row"><div class="case-id">${escapeHtml(c.id)}</div><div class="case-name">${escapeHtml(c.name)}</div><span class="case-status ${escapeHtml(c.status)}">${escapeHtml(c.status)}</span></div>`).join('') : '<div style="color:var(--text-muted);padding:20px">No escalated cases yet.</div>';
 }
-
 let drawerOpen = false;
-function toggleDrawer() {
-  drawerOpen = !drawerOpen;
-  document.getElementById('casesDrawer').classList.toggle('open', drawerOpen);
-}
-
-/* ─ Commander ─ */
+function toggleDrawer() { drawerOpen = !drawerOpen; document.getElementById('casesDrawer').classList.toggle('open', drawerOpen); }
 function renderCommander() {
-  // ASOM
-  document.getElementById('asomList').innerHTML = ASOM_LINES.map(a => `
-    <div class="asom-line-row">
-      <div class="asom-num">${a.n}</div>
-      <div class="asom-text">${a.text}</div>
-      <span class="asom-status ${a.status}">${a.status}</span>
-    </div>`).join('');
-
-  // Threat actors
-  document.getElementById('actorList').innerHTML = ACTORS.map(a => `
-    <div class="actor-row">
-      <div class="actor-icon">⚠</div>
-      <div>
-        <div class="actor-name">${a.name}</div>
-        <div class="actor-detail">${a.detail}</div>
-      </div>
-      <div class="actor-conf">${a.conf}</div>
-    </div>`).join('');
-
-  // Feed
-  document.getElementById('agentFeed').innerHTML = FEED.map((f, i) => `
-    <div class="feed-row">
-      <div class="feed-time">${f.time}</div>
-      <div class="feed-dot-col">
-        <div class="feed-dot ${f.color}"></div>
-        ${i < FEED.length - 1 ? '<div class="feed-line"></div>' : ''}
-      </div>
-      <div class="feed-body">
-        <div class="feed-agent">${f.agent}</div>
-        <div class="feed-text">${f.text} <span class="feed-tag">${f.tag}</span></div>
-      </div>
-    </div>`).join('');
-
-  // Events table
-  document.getElementById('eventsTableBody').innerHTML = AGENT_TABLE.map(a => `
-    <tr>
-      <td>${a.agent}</td>
-      <td>${a.count}</td>
-      <td><span class="asom-status ${a.status === 'active' ? 'active' : 'pending'}">${a.status}</span></td>
-    </tr>`).join('');
-
-  // Timestamp
-  document.getElementById('cmdTimestamp').textContent = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' UTC';
+  document.getElementById('asomList').innerHTML = ASOM_LINES.map(a => `<div class="asom-line-row"><div class="asom-num">${a.n}</div><div class="asom-text">${escapeHtml(a.text)}</div><span class="asom-status ${escapeHtml(a.status)}">${escapeHtml(a.status)}</span></div>`).join('');
+  document.getElementById('actorList').innerHTML = ACTORS.map(a => `<div class="actor-row"><div class="actor-icon">⚠</div><div><div class="actor-name">${escapeHtml(a.name)}</div><div class="actor-detail">${escapeHtml(a.detail)}</div></div><div class="actor-conf">${escapeHtml(a.conf)}</div></div>`).join('');
+  document.getElementById('agentFeed').innerHTML = FEED.map((f, i) => `<div class="feed-row"><div class="feed-time">${escapeHtml(f.time)}</div><div class="feed-dot-col"><div class="feed-dot ${escapeHtml(f.color)}"></div>${i < FEED.length - 1 ? '<div class="feed-line"></div>' : ''}</div><div class="feed-body"><div class="feed-agent">${escapeHtml(f.agent)}</div><div class="feed-text">${escapeHtml(f.text)} <span class="feed-tag">${escapeHtml(f.tag)}</span></div></div></div>`).join('');
+  document.getElementById('eventsTableBody').innerHTML = AGENT_TABLE.map(a => `<tr><td>${escapeHtml(a.agent)}</td><td>${a.count}</td><td><span class="asom-status ${a.status === 'active' ? 'active' : 'pending'}">${escapeHtml(a.status)}</span></td></tr>`).join('');
+  document.getElementById('cmdTimestamp').textContent = new Date().toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second:'2-digit' }) + ' UTC';
 }
-
-/* ─ View Switch ─ */
 function switchView(role) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById(role === 'analyst' ? 'analystView' : 'commanderView').classList.add('active');
   document.getElementById('analystBtn').classList.toggle('active', role === 'analyst');
   document.getElementById('commanderBtn').classList.toggle('active', role === 'commander');
-  document.getElementById('analystBtn').classList.toggle('commander-role', false);
   document.getElementById('commanderBtn').classList.toggle('commander-role', role === 'commander');
 }
-
-/* ─ Init ─ */
-renderEvents();
-renderDrawer();
-renderCommander();
-
-// Live clock
-setInterval(() => {
-  const el = document.getElementById('cmdTimestamp');
-  if (el) el.textContent = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' UTC';
-}, 1000);
-</script>
-<script>async function spotterLoad(){try{let b=await(await fetch('/api/events?limit=100')).json();if(b.success&&b.data.length&&window.EVENTS){EVENTS.splice(0,EVENTS.length,...b.data);renderEvents()}}catch(e){}};setTimeout(spotterLoad,600)</script></body>
+async function init() {
+  await refreshData();
+  renderEvents(); renderDrawer(); renderCommander(); switchView(state.view);
+}
+setInterval(() => { const el=document.getElementById('cmdTimestamp'); if(el) el.textContent = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'}) + ' UTC'; }, 1000);
+init().catch(e => { console.error(e); renderEvents(); renderDrawer(); renderCommander(); switchView(state.view); });
+</script></body>
 </html>

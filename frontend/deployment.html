@@ -2124,7 +2124,7 @@ html, body { height: 100%; }
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Elasticsearch URL</label>
-        <input class="form-input" type="text" placeholder="https://elasticsearch.example.com" value="https://elastic.ops.internal">
+        <input class="form-input" type="text" placeholder="https://elasticsearch.example.com" value="http://127.0.0.1">
       </div>
       <div class="form-group">
         <label class="form-label">Port</label>
@@ -2134,17 +2134,17 @@ html, body { height: 100%; }
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Username</label>
-        <input class="form-input" type="text" placeholder="elastic" value="analyst_svc">
+        <input class="form-input" type="text" placeholder="elastic" value="apt29">
       </div>
       <div class="form-group">
         <label class="form-label">Password / API Key</label>
-        <input class="form-input" type="password" placeholder="••••••••••••" value="supersecretapikey">
+        <input class="form-input" type="password" placeholder="••••••••••••" >
       </div>
     </div>
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Index Pattern</label>
-        <input class="form-input" type="text" placeholder="zeek-*,suricata-*" value="zeek-*,suricata-*,winlogbeat-*">
+        <input class="form-input" type="text" placeholder="zeek-*,suricata-*" value="botsv3-*,apt29-*,apt3-*,lsass-*">
       </div>
       <div class="form-group">
         <label class="form-label">TLS Verify</label>
@@ -2784,9 +2784,72 @@ html, body { height: 100%; }
 
 
 <script>
-/* ═══════════════════════════════════════
-   DEPLOYMENT LOGIC
-═══════════════════════════════════════ */
+const state = {
+  sessionId: null,
+  telemetry: null,
+  health: null,
+  documents: [],
+  agents: [],
+  selectedTelemetry: 'elastic',
+  selectedModel: 'ollama'
+};
+
+async function api(path, options = {}) {
+  const res = await fetch(path, options);
+  const body = await res.json().catch(() => ({ success:false, error:'Invalid JSON response' }));
+  if (!res.ok || body.success === false) throw new Error(body.error || `HTTP ${res.status}`);
+  return body.data;
+}
+
+function setText(id, text) { const el = document.getElementById(id); if (el) el.textContent = text; }
+function setHTML(id, html) { const el = document.getElementById(id); if (el) el.innerHTML = html; }
+function escapeHtml(v) { return String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
+function compactTime(v) { try { return new Date(v).toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'}); } catch { return v || ''; } }
+function normalizeEvent(ev) {
+  return {
+    id: ev.id || ev.event_id,
+    sev: ev.sev || ({critical:'crit', high:'high', medium:'medium', low:'low'}[ev.severity] || 'medium'),
+    sevLabel: ev.sevLabel || (ev.severity || 'medium').toUpperCase(),
+    title: ev.title || 'Untitled Finding',
+    agent: ev.agent || 'agent',
+    time: compactTime(ev.time || ev.created_at),
+    snippet: ev.snippet || '',
+    explanation: ev.explanation || '',
+    enrichment: (ev.enrichment || []).map(x => ({ l:x.label || x.l || 'Field', v:x.val || x.value || x.v || '', c:x.cls || x.color || x.c || '' })),
+    tags: (ev.tags || []).map(x => ({ t:x.label || x.text || x.t || '', c:x.cls || x.type || x.c || '' })),
+    nextQ: ev.nextQ || ev.recommended_next_question || 'Review correlated evidence and decide whether to escalate.',
+    log: typeof ev.log === 'string' ? ev.log : JSON.stringify(ev.log || {}, null, 2),
+    status: ev.status || 'new'
+  };
+}
+function normalizeCase(c) {
+  return {
+    id: c.id || c.case_id,
+    name: c.name || 'Untitled Case',
+    status: c.status || 'open',
+    owner: c.owner || 'Unassigned',
+    opened: compactTime(c.opened || c.created_at),
+    events: c.events || 1,
+    summary: c.summary || c.narrative_summary || '',
+    iocs: c.iocs || []
+  };
+}
+
+async function loadHealth() {
+  try {
+    const h = await api('/api/health');
+    state.health = h;
+    document.querySelectorAll('.status-item').forEach(item => {
+      const name = item.querySelector('.status-name')?.textContent?.trim();
+      const val = item.querySelector('.status-val');
+      const ok = h.services && h.services[name] !== false;
+      if (val) { val.className = 'status-val ' + (ok ? 'online' : 'checking'); val.textContent = ok ? 'Online' : 'Degraded'; }
+    });
+  } catch (e) {
+    document.querySelectorAll('.status-val').forEach(el => { el.className='status-val checking'; el.textContent='API error'; });
+  }
+}
+
 function goTo(n) {
   document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.step-item').forEach((s, i) => {
@@ -2797,567 +2860,151 @@ function goTo(n) {
   document.querySelectorAll('.step-item')[n].classList.add('active');
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
+async function beginSetup() { await loadHealth(); setTimeout(() => goTo(1), 500); }
+function selectTelemetry(el, provider='elastic') { state.selectedTelemetry = provider; document.querySelectorAll('.provider-grid .provider-card').forEach(c => c.classList.remove('selected')); el.classList.add('selected'); }
+function selectModel(el, provider='ollama') { state.selectedModel = provider; document.querySelectorAll('.model-provider-grid .provider-card').forEach(c => c.classList.remove('selected')); el.classList.add('selected'); }
 
-function beginSetup() {
-  const items = document.querySelectorAll('.status-val');
-  items.forEach((el, i) => {
-    setTimeout(() => { el.className = 'status-val online'; el.textContent = 'Online'; }, 300 + i * 200);
-  });
-  setTimeout(() => goTo(1), 300 + items.length * 200 + 350);
-}
-
-function selectTelemetry(el) {
-  document.querySelectorAll('.provider-grid .provider-card').forEach(c => c.classList.remove('selected'));
-  el.classList.add('selected');
-}
-
-function selectModel(el) {
-  document.querySelectorAll('.model-provider-grid .provider-card').forEach(c => c.classList.remove('selected'));
-  el.classList.add('selected');
-}
-
-function testConnection() {
+async function testConnection() {
   const r = document.getElementById('connResult');
-  r.style.display = 'none';
-  setTimeout(() => { r.style.display = 'block'; }, 900);
+  r.style.display = 'block';
+  r.innerHTML = '<div class="conn-result-head"><span>…</span> Testing Elastic connection</div>';
+  try {
+    const inputs = [...document.querySelectorAll('#elasticConfig input')];
+    const payload = {
+      provider: state.selectedTelemetry,
+      url: inputs[0]?.value || '',
+      port: inputs[1]?.value || '',
+      username: inputs[2]?.value || '',
+      password: inputs[3]?.value || '',
+      index_pattern: inputs[4]?.value || ''
+    };
+    if (payload.url && payload.port && !/:[0-9]+$/.test(payload.url.replace(/\/$/, ''))) payload.url = payload.url.replace(/\/$/, '') + ':' + payload.port;
+    const data = await api('/api/setup/telemetry/test', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    state.telemetry = data;
+    r.innerHTML = `<div class="conn-result-head"><span>✓</span> Connection Successful</div>
+      <div class="conn-grid"><div><b>Cluster</b><span>${escapeHtml(data.cluster || 'unknown')}</span></div><div><b>Total Docs</b><span>${Number(data.total_docs || 0).toLocaleString()}</span></div><div><b>Indices</b><span>${(data.indexes || []).length}</span></div></div>`;
+  } catch (e) {
+    r.innerHTML = `<div class="conn-result-head"><span>!</span> Connection Failed</div><div>${escapeHtml(e.message)}</div>`;
+  }
 }
-
-function testModel() {
+async function testModel() {
   const r = document.getElementById('modelResult');
-  r.style.display = 'none';
-  setTimeout(() => { r.style.display = 'block'; }, 1100);
+  r.style.display = 'block';
+  r.innerHTML = '<div class="conn-result-head"><span>…</span> Testing model route</div>';
+  try {
+    const data = await api('/api/setup/model/test', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({provider:state.selectedModel})});
+    r.innerHTML = `<div class="conn-result-head"><span>✓</span> Model Connected</div><div>${escapeHtml(data.provider)} // ${escapeHtml(data.model)} // ${escapeHtml(data.mode)}</div>`;
+  } catch (e) { r.innerHTML = `<div class="conn-result-head"><span>!</span> Model Failed</div><div>${escapeHtml(e.message)}</div>`; }
 }
+function toggleAgent(el) { el.classList.toggle('selected'); el.querySelector('.agent-check').textContent = el.classList.contains('selected') ? '✓' : ''; }
 
-function toggleAgent(el) {
-  el.classList.toggle('selected');
-  el.querySelector('.agent-check').textContent = el.classList.contains('selected') ? '✓' : '';
-}
-
-function handleFiles(files) {
+async function handleFiles(files) {
   const tbody = document.getElementById('fileTableBody');
-  Array.from(files).forEach(f => {
+  for (const f of Array.from(files)) {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${f.name}</td><td><span class="tag tag-yes">DOC</span></td><td><span class="tag tag-pending">Parsing...</span></td><td><span class="tag tag-no">Pending</span></td><td><button class="btn btn-danger" onclick="this.closest('tr').remove()">Remove</button></td>`;
+    tr.innerHTML = `<td>${escapeHtml(f.name)}</td><td><span class="tag tag-yes">DOC</span></td><td><span class="tag tag-pending">Uploading...</span></td><td><span class="tag tag-no">Pending</span></td><td><button class="btn btn-danger" onclick="this.closest('tr').remove()">Remove</button></td>`;
     tbody.appendChild(tr);
-    setTimeout(() => {
-      tr.querySelectorAll('.tag')[2].className = 'tag tag-yes';
-      tr.querySelectorAll('.tag')[2].textContent = '✓ Yes';
-      tr.querySelectorAll('.tag')[3].className = 'tag tag-pending';
-      tr.querySelectorAll('.tag')[3].textContent = 'Indexing...';
-    }, 1500);
-    setTimeout(() => {
-      tr.querySelectorAll('.tag')[3].className = 'tag tag-yes';
-      tr.querySelectorAll('.tag')[3].textContent = '✓ Yes';
-    }, 3200);
-  });
+    try {
+      const fd = new FormData(); fd.append('file', f); if (state.sessionId) fd.append('session_id', state.sessionId);
+      const data = await api('/api/documents/upload', {method:'POST', body:fd});
+      state.sessionId = state.sessionId || data.session_id;
+      tr.querySelectorAll('.tag')[2].className = 'tag tag-yes'; tr.querySelectorAll('.tag')[2].textContent = '✓ Parsed';
+      tr.querySelectorAll('.tag')[3].className = 'tag tag-yes'; tr.querySelectorAll('.tag')[3].textContent = '✓ Indexed';
+    } catch(e) {
+      tr.querySelectorAll('.tag')[2].className = 'tag tag-no'; tr.querySelectorAll('.tag')[2].textContent = 'Upload failed';
+    }
+  }
 }
 
-/* ═══════════════════════════════════════
-   LAUNCH TRANSITION
-═══════════════════════════════════════ */
-function launchHunt() {
+async function launchHunt() {
   const ov = document.getElementById('launchOverlay');
   ov.classList.add('lo-show');
-  const lineIds = ['lo1','lo2','lo3','lo4','lo5','lo6'];
-  lineIds.forEach((id, i) => {
-    setTimeout(() => document.getElementById(id).classList.add('los'), 300 + i * 480);
-  });
-  setTimeout(() => {
-    document.getElementById('loBig').classList.add('los');
-    document.getElementById('loSub').classList.add('los');
-  }, 300 + lineIds.length * 480 + 200);
-  setTimeout(() => {
-    document.getElementById('loBtns').classList.add('los');
-  }, 300 + lineIds.length * 480 + 600);
+  ['lo1','lo2','lo3','lo4','lo5','lo6'].forEach((id, i) => setTimeout(() => document.getElementById(id).classList.add('los'), 250 + i * 350));
+  try {
+    const selectedAgents = [...document.querySelectorAll('.agent-item.selected')].map(x => x.textContent.replace('✓','').trim());
+    const data = await api('/api/setup/launch', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({telemetry:state.telemetry, model:state.selectedModel, agents:selectedAgents})});
+    state.sessionId = data.session_id;
+    document.getElementById('loSub').innerHTML = `${escapeHtml(data.name || 'HUNT')} // ${selectedAgents.length} Agents Online`;
+    await refreshOpsData();
+  } catch (e) {
+    document.getElementById('loSub').textContent = 'Launch failed: ' + e.message;
+  }
+  setTimeout(() => { document.getElementById('loBig').classList.add('los'); document.getElementById('loSub').classList.add('los'); }, 2600);
+  setTimeout(() => document.getElementById('loBtns').classList.add('los'), 3000);
 }
-
 function enterOps(role) {
-  const ov = document.getElementById('launchOverlay');
-  ov.classList.remove('lo-show');
-  ['lo1','lo2','lo3','lo4','lo5','lo6','loBig','loSub','loBtns'].forEach(id =>
-    document.getElementById(id).classList.remove('los')
-  );
-  document.getElementById('deployScreen').classList.remove('active');
-  document.getElementById('opsScreen').classList.add('active');
-  document.body.style.overflow = 'hidden';
-  switchOpsView(role);
-  renderAll();
+  location.href = `/operations.html?view=${encodeURIComponent(role)}&session_id=${encodeURIComponent(state.sessionId || 'demo')}`;
 }
-
-function returnToAdmin() {
-  document.getElementById('opsScreen').classList.remove('active');
-  document.getElementById('deployScreen').classList.add('active');
-  document.body.style.overflow = '';
-  window.scrollTo({ top: 0 });
-}
-
-/* ═══════════════════════════════════════
-   OPS VIEW SWITCHER
-═══════════════════════════════════════ */
+function returnToAdmin() { document.getElementById('opsScreen').classList.remove('active'); document.getElementById('deployScreen').classList.add('active'); document.body.style.overflow = ''; window.scrollTo({ top: 0 }); }
 function switchOpsView(role) {
   document.querySelectorAll('.ops-view').forEach(v => v.classList.remove('ova'));
-  document.getElementById(role + 'View').classList.add('ova');
-  document.getElementById('btnAnalyst').className   = 'role-btn' + (role === 'analyst'   ? ' ra' : '');
-  document.getElementById('btnCommander').className = 'role-btn' + (role === 'commander' ? ' rc' : '');
-  document.getElementById('analystBar').className   = 'abar'     + (role === 'analyst'   ? ' abv' : '');
+  const target = document.getElementById(role + 'View'); if (target) target.classList.add('ova');
+  const a=document.getElementById('btnAnalyst'), c=document.getElementById('btnCommander'), bar=document.getElementById('analystBar');
+  if(a) a.className = 'role-btn' + (role === 'analyst' ? ' ra' : '');
+  if(c) c.className = 'role-btn' + (role === 'commander' ? ' rc' : '');
+  if(bar) bar.className = 'abar' + (role === 'analyst' ? ' abv' : '');
 }
 
-/* ═══════════════════════════════════════
-   DATA — EVENTS
-═══════════════════════════════════════ */
-const EVENTS = [
-  {
-    id: 'EVT-0041', sev: 'crit', sevLabel: 'Critical',
-    title: 'C2 Beacon Detected',
-    agent: 'Beaconing Agent', time: '14:32',
-    snippet: 'Host 10.4.22.17 → 185.220.101.47 every 300s ± 2s',
-    explanation: 'A host on the internal network has been making outbound TCP connections to an external IP on port 443 at near-perfect 300-second intervals for 6+ hours. The timing jitter of ±2 seconds is inconsistent with human-initiated traffic and strongly indicates an automated callback loop from implanted malware.',
-    enrichment: [
-      { l:'Source IP',     v:'10.4.22.17',        c:'kv-highlight' },
-      { l:'Dest IP',       v:'185.220.101.47',     c:'kv-danger' },
-      { l:'Port',          v:'443 / TCP',          c:'' },
-      { l:'Interval',      v:'300s ± 2s',          c:'kv-highlight' },
-      { l:'Duration',      v:'6h 14m',             c:'kv-highlight' },
-      { l:'Bytes Out',     v:'2.1 KB avg',         c:'' }
-    ],
-    tags: [
-      { t:'185.220.101.47 — TOR Exit Node', c:'tag-ioc' },
-      { t:'APT41 C2 IP Range (Intel Report)', c:'tag-intel' },
-      { t:'ASOM Section 2.2 — Priority Host', c:'tag-context' }
-    ],
-    nextQ: 'What processes on 10.4.22.17 are responsible for the outbound connections? Are there corresponding Sysmon events showing a suspicious parent-child process relationship?',
-    log: '{ "ts":"2026-05-29T14:32:11Z", "id.orig_h":"10.4.22.17", "id.resp_h":"185.220.101.47", "id.resp_p":443, "proto":"tcp", "duration":0.412, "orig_bytes":2108, "resp_bytes":512, "conn_state":"SF" }'
-  },
-  {
-    id: 'EVT-0040', sev: 'crit', sevLabel: 'Critical',
-    title: 'DGA Domain Cluster',
-    agent: 'DGA Agent', time: '14:18',
-    snippet: '14 algorithmically-generated domains queried from 10.4.19.3',
-    explanation: 'Endpoint 10.4.19.3 queried 14 domains in a 20-minute window, all scoring above 0.91 on the DGA entropy model. Domains exhibit high n-gram entropy, no Alexa top-1M overlap, and an 86% NXDOMAIN rate — consistent with Supernova or similar DGA-based C2 families conducting domain fluxing.',
-    enrichment: [
-      { l:'Source Host',    v:'10.4.19.3',         c:'kv-highlight' },
-      { l:'Domain Count',   v:'14',                c:'kv-danger' },
-      { l:'Avg Entropy',    v:'4.31 bits/char',    c:'kv-highlight' },
-      { l:'Window',         v:'20 minutes',        c:'' },
-      { l:'NXDOMAIN Rate',  v:'86%',               c:'kv-danger' },
-      { l:'Resolver',       v:'8.8.8.8 (External)',c:'kv-highlight' }
-    ],
-    tags: [
-      { t:'DGA Confidence Score: 0.94', c:'tag-ioc' },
-      { t:'Supernova Family — Intel Match', c:'tag-intel' },
-      { t:'Bypassing Internal DNS Resolver', c:'tag-context' }
-    ],
-    nextQ: 'Have any of the 14 queried domains resolved successfully? Has 10.4.19.3 made any outbound TCP connections following a successful DNS resolution?',
-    log: '{ "ts":"2026-05-29T14:18:44Z", "query":"xkqvrtmnpzl.net", "qtype_name":"A", "rcode_name":"NXDOMAIN", "id.orig_h":"10.4.19.3", "id.resp_h":"8.8.8.8", "id.resp_p":53 }'
-  },
-  {
-    id: 'EVT-0039', sev: 'high', sevLabel: 'High',
-    title: 'Suspicious JA3 Fingerprint',
-    agent: 'JA3/JA4 Agent', time: '13:55',
-    snippet: 'JA3: 51c64c77... matched Cobalt Strike default profile',
-    explanation: "Outbound TLS from 10.4.8.102 to port 8443 presented a JA3 fingerprint associated with Cobalt Strike's default malleable C2 profile. The destination is self-signed, not in any approved cloud provider range, and the non-standard port increases suspicion of deliberate firewall evasion.",
-    enrichment: [
-      { l:'Source',         v:'10.4.8.102',        c:'kv-highlight' },
-      { l:'Destination',    v:'45.142.212.100',    c:'kv-danger' },
-      { l:'JA3 Hash',       v:'51c64c77e60f...',   c:'kv-highlight' },
-      { l:'TI Match',       v:'Cobalt Strike',     c:'kv-danger' },
-      { l:'Cert CN',        v:'selfhosted.local',  c:'kv-highlight' },
-      { l:'Port',           v:'8443 (Non-standard)',c:'kv-danger' }
-    ],
-    tags: [
-      { t:'Cobalt Strike JA3 — Default Profile', c:'tag-ioc' },
-      { t:'Self-Signed Certificate', c:'tag-ioc' },
-      { t:'Non-standard Egress Port 8443', c:'tag-context' }
-    ],
-    nextQ: 'Is 10.4.8.102 a known managed endpoint? Review Sysmon logs for rundll32, regsvr32, or mshta spawning a network-connected child process in the same timeframe.',
-    log: '{ "ts":"2026-05-29T13:55:09Z", "id.orig_h":"10.4.8.102", "id.resp_h":"45.142.212.100", "id.resp_p":8443, "ja3":"51c64c77e60f3980eea90869b68c58a8", "server_name":"selfhosted.local", "validation_status":"self signed certificate" }'
-  },
-  {
-    id: 'EVT-0038', sev: 'high', sevLabel: 'High',
-    title: 'New External IP — High Volume',
-    agent: 'New External IP Agent', time: '13:41',
-    snippet: '203.0.113.88 first seen — 14,200 inbound connections in 1h',
-    explanation: 'IP 203.0.113.88 appeared in connection logs for the first time and immediately generated over 14,000 SYN packets across 47 internal hosts within one hour. The IP is registered to AS209103, a known bulletproof hosting provider. Volume and breadth is consistent with automated scanning or initial access brokering.',
-    enrichment: [
-      { l:'Source IP',      v:'203.0.113.88',      c:'kv-danger' },
-      { l:'ASN',            v:'AS209103 (BPH)',     c:'kv-danger' },
-      { l:'Total Conns',    v:'14,200 / 1h',       c:'kv-highlight' },
-      { l:'Unique Targets', v:'47 internal hosts', c:'kv-highlight' },
-      { l:'First Seen',     v:'13:41 today',       c:'' },
-      { l:'Country',        v:'RU',                c:'' }
-    ],
-    tags: [
-      { t:'Bulletproof Hosting ASN', c:'tag-ioc' },
-      { t:'Zero Prior Sightings', c:'tag-context' },
-      { t:'Scanning Behavioural Pattern', c:'tag-context' }
-    ],
-    nextQ: 'Which ports and services are being targeted? Have any SYN packets been answered (conn_state SF rather than S0)? Cross-reference targeted hosts with the asset list.',
-    log: '{ "ts":"2026-05-29T13:41:00Z", "id.orig_h":"203.0.113.88", "id.resp_h":"10.4.0.1", "id.resp_p":22, "conn_state":"S0", "orig_bytes":0, "history":"S", "missed_bytes":0 }'
-  },
-  {
-    id: 'EVT-0037', sev: 'high', sevLabel: 'High',
-    title: 'Threat Intel Match — APT41',
-    agent: 'Threat Intel Correlation Agent', time: '13:20',
-    snippet: 'update-cdn[.]net — exact match in APT41 Intel Report',
-    explanation: 'DNS query for update-cdn[.]net from internal host 10.4.3.55. This domain appears verbatim in the uploaded APT41 intelligence report as a staging domain used in Operation ShadowHarvest. The domain has resolved to a new IP not seen in prior Passive DNS data, suggesting active infrastructure rotation.',
-    enrichment: [
-      { l:'Domain',         v:'update-cdn[.]net',  c:'kv-danger' },
-      { l:'Intel Source',   v:'APT41 Report Q1',   c:'kv-highlight' },
-      { l:'Campaign',       v:'ShadowHarvest',     c:'kv-danger' },
-      { l:'Queried By',     v:'10.4.3.55',         c:'' },
-      { l:'Resolved IP',    v:'91.108.56.200',     c:'kv-danger' },
-      { l:'Match Type',     v:'Exact String',      c:'kv-ok' }
-    ],
-    tags: [
-      { t:'APT41 IoC — Exact Domain Match', c:'tag-intel' },
-      { t:'Operation ShadowHarvest Infrastructure', c:'tag-intel' },
-      { t:'Successful DNS Resolution — Active Infra', c:'tag-ioc' }
-    ],
-    nextQ: 'Has 10.4.3.55 made any TCP connections to 91.108.56.200 following the DNS resolution? What user account and hostname is associated with this IP in the asset list?',
-    log: '{ "ts":"2026-05-29T13:20:17Z", "query":"update-cdn.net", "qtype_name":"A", "rcode_name":"NOERROR", "answers":["91.108.56.200"], "TTL":60, "id.orig_h":"10.4.3.55" }'
-  },
-  {
-    id: 'EVT-0036', sev: 'medium', sevLabel: 'Medium',
-    title: 'New Domain — Low Reputation',
-    agent: 'New Domain Agent', time: '12:58',
-    snippet: 'telemetry-api[.]io — 3 days old, first internal query',
-    explanation: 'Domain telemetry-api[.]io was registered 3 days ago via a privacy-protected registrar and has only been queried from two distinct ASNs globally (including this one), suggesting it is not broadly known or operated. The name mimics legitimate telemetry infrastructure, which is a common masquerading technique.',
-    enrichment: [
-      { l:'Domain',         v:'telemetry-api[.]io',c:'kv-highlight' },
-      { l:'Registered',     v:'3 days ago',        c:'kv-highlight' },
-      { l:'Registrar',      v:'PrivacyProtected',  c:'' },
-      { l:'Queried By',     v:'10.4.11.9',         c:'' },
-      { l:'Global ASNs',    v:'2 (very low)',      c:'kv-highlight' },
-      { l:'Category',       v:'Uncategorized',     c:'' }
-    ],
-    tags: [
-      { t:'Newly Registered Domain (3d)', c:'tag-context' },
-      { t:'Privacy-Protected Registrar', c:'tag-context' },
-      { t:'Mimics Telemetry Infrastructure', c:'tag-context' }
-    ],
-    nextQ: 'Is telemetry-api[.]io referenced in any uploaded mission documents or the approved vendor list? Does 10.4.11.9 have a documented role that requires external telemetry calls?',
-    log: '{ "ts":"2026-05-29T12:58:33Z", "query":"telemetry-api.io", "qtype_name":"A", "rcode_name":"NOERROR", "answers":["104.21.7.81"], "id.orig_h":"10.4.11.9" }'
-  },
-  {
-    id: 'EVT-0035', sev: 'medium', sevLabel: 'Medium',
-    title: 'Suricata — ET SCAN Nmap',
-    agent: 'Threat Intel Correlation Agent', time: '12:30',
-    snippet: 'Internal host 10.4.0.44 scanning 230 hosts (VLAN40)',
-    explanation: 'Suricata fired 12 ET SCAN alerts consistent with Nmap service fingerprinting originating from 10.4.0.44, a server-tier host in VLAN40. Server-class assets should not initiate broad internal scans. Either the host is compromised and being used as a pivot point, or an administrator is performing an unauthorized assessment.',
-    enrichment: [
-      { l:'Source',         v:'10.4.0.44',         c:'kv-highlight' },
-      { l:'Suricata SID',   v:'2010936',           c:'' },
-      { l:'Signature',      v:'ET SCAN Nmap UA',   c:'' },
-      { l:'VLAN',           v:'VLAN40 — Servers',  c:'' },
-      { l:'Hosts Scanned',  v:'230 unique IPs',    c:'kv-highlight' },
-      { l:'Alert Count',    v:'12 triggers',       c:'' }
-    ],
-    tags: [
-      { t:'Internal Lateral Scanner', c:'tag-context' },
-      { t:'Server-Class Host — Unexpected Behaviour', c:'tag-context' }
-    ],
-    nextQ: 'Is 10.4.0.44 listed as an authorized vulnerability scanner in the asset list? If not, check Sysmon for nmap.exe, masscan.exe, or any scanning tool launched on that host.',
-    log: '{ "ts":"2026-05-29T12:30:05Z", "src_ip":"10.4.0.44", "dest_ip":"10.4.1.14", "signature":"ET SCAN Nmap Scripting Engine User-Agent Detected", "severity":2, "category":"Attempted Information Leak" }'
-  },
-  {
-    id: 'EVT-0034', sev: 'low', sevLabel: 'Low',
-    title: 'New Domain — Known CDN',
-    agent: 'New Domain Agent', time: '11:44',
-    snippet: 'cdn-assets-42[.]fastly-edge.net — first-seen, Fastly CDN',
-    explanation: 'A Fastly CDN subdomain was observed for the first time in DNS logs from 10.4.2.21. The domain resolves to a verified Fastly IP range, the parent domain is well-established, and there are no threat intelligence associations. Logged for completeness as a new domain per policy.',
-    enrichment: [
-      { l:'Domain',         v:'cdn-assets-42.fastly-edge.net', c:'' },
-      { l:'Provider',       v:'Fastly CDN',         c:'kv-ok' },
-      { l:'Queried By',     v:'10.4.2.21',          c:'' },
-      { l:'Resolved IP',    v:'151.101.0.0/16',     c:'kv-ok' },
-      { l:'TI Hits',        v:'0',                  c:'kv-ok' },
-      { l:'Risk Score',     v:'Low (1/10)',          c:'kv-ok' }
-    ],
-    tags: [
-      { t:'Fastly CDN — Known Provider', c:'tag-context' },
-      { t:'Zero Threat Intelligence Hits', c:'tag-context' }
-    ],
-    nextQ: 'Which application on 10.4.2.21 is requesting CDN assets? Correlate with HTTP logs to confirm expected browser or application traffic. No escalation recommended unless correlation shows anomaly.',
-    log: '{ "ts":"2026-05-29T11:44:22Z", "query":"cdn-assets-42.fastly-edge.net", "qtype_name":"A", "rcode_name":"NOERROR", "answers":["151.101.1.44"], "id.orig_h":"10.4.2.21" }'
-  }
-];
-
-/* ═══════════════════════════════════════
-   DATA — CASES
-═══════════════════════════════════════ */
-const CASES = [
-  {
-    id: 'CASE-007', name: 'APT41 Staging Domain Activity', status: 'review',
-    owner: 'M. Rivera', opened: '13:22', events: 2,
-    summary: 'DNS queries to known APT41 staging domain update-cdn[.]net resolved to active infrastructure. Cross-correlated with uploaded Q1 Intel Report. Awaiting confirmation of follow-on TCP connections before escalating to ASOM.',
-    iocs: ['update-cdn[.]net', '91.108.56.200', '10.4.3.55']
-  },
-  {
-    id: 'CASE-006', name: 'Beaconing Host 10.4.22.17', status: 'open',
-    owner: 'J. Kim', opened: '14:35', events: 1,
-    summary: 'Internal host confirmed beaconing to TOR exit node on 300-second interval. Host has been isolated pending Sysmon log review. IP matches APT41 C2 range from intel report. Likely related to CASE-007.',
-    iocs: ['10.4.22.17', '185.220.101.47', 'TOR Exit Node']
-  },
-  {
-    id: 'CASE-005', name: 'Internal Nmap — Source Investigation', status: 'open',
-    owner: 'T. Patel', opened: '12:33', events: 1,
-    summary: 'Server 10.4.0.44 (VLAN40) triggering Nmap scan signatures against 230 internal hosts. Asset list check shows no authorized scanner role. Awaiting AD query to identify host owner and recent login history.',
-    iocs: ['10.4.0.44', 'ET SCAN SID 2010936']
-  },
-  {
-    id: 'CASE-004', name: 'DGA Cluster — 10.4.19.3', status: 'open',
-    owner: 'J. Kim', opened: '14:20', events: 1,
-    summary: 'Endpoint querying 14 DGA domains via external resolver. No successful resolutions yet. Likely same threat actor as beaconing case — both hosts may be compromised. Recommend host isolation and memory acquisition.',
-    iocs: ['10.4.19.3', 'xkqvrtmnpzl.net', 'DGA score 0.94']
-  }
-];
-
-/* ═══════════════════════════════════════
-   DATA — COMMANDER
-═══════════════════════════════════════ */
+let EVENTS = [];
+let CASES = [];
 const ASOM_LINES = [
-  { n:'1.1', t:'Identify all external C2 communications in target network',       s:'done' },
-  { n:'1.2', t:'Enumerate first-seen external IPs and associated ASNs',           s:'done' },
-  { n:'1.3', t:'Profile DNS activity for DGA and newly-registered domain patterns',s:'done' },
-  { n:'2.1', t:'Correlate SSL/TLS fingerprints against known malware families',   s:'done' },
-  { n:'2.2', t:'Identify beaconing hosts and calculate callback intervals',        s:'active' },
-  { n:'2.3', t:'Cross-reference all observables against APT41 intel report',      s:'done' },
-  { n:'3.1', t:'Assess scope of potential APT41 compromise across all hosts',     s:'active' },
-  { n:'3.2', t:'Document all confirmed IOCs for client reporting deliverable',    s:'pending' },
-  { n:'3.3', t:'Determine lateral movement pathways if present',                  s:'pending' }
+  { n:'1.1', t:'Confirm live telemetry connection and document scope', s:'done' },
+  { n:'1.2', t:'Launch selected agents against searchable BOTSv3/APT data', s:'active' },
+  { n:'2.1', t:'Analyst triage: dismiss or escalate findings', s:'pending' },
+  { n:'3.1', t:'Commander review of active cases and agent output', s:'pending' }
 ];
+const ACTORS = [{ name:'Unknown Operator', detail:'Attribution pending analyst validation', conf:'TBD' }];
+let FEED = [];
+let AGENT_TABLE = [];
 
-const ACTORS = [
-  { name:'APT41',      detail:'Confirmed — Intel Match + C2 Infra + Staging Domain', conf:'94%' },
-  { name:'Unknown TA', detail:'Cobalt Strike operator — unattributed, possible APT41', conf:'67%' },
-  { name:'Insider/Scanner TA', detail:'Unauthorized internal scan — insider or pivot', conf:'41%' }
-];
-
-const FEED = [
-  { time:'14:32', color:'red',   agent:'Beaconing Agent',          text:'C2 beacon confirmed — 10.4.22.17 → 185.220.101.47',   tag:'CRITICAL' },
-  { time:'14:18', color:'red',   agent:'DGA Agent',                text:'DGA cluster — 14 domains from 10.4.19.3',             tag:'CRITICAL' },
-  { time:'13:55', color:'amber', agent:'JA3/JA4 Agent',            text:'Cobalt Strike JA3 match — 10.4.8.102:8443',           tag:'HIGH' },
-  { time:'13:41', color:'amber', agent:'New External IP Agent',    text:'BPH scanner 203.0.113.88 — 14.2K connections',        tag:'HIGH' },
-  { time:'13:20', color:'amber', agent:'Threat Intel Agent',       text:'APT41 exact IoC match — update-cdn[.]net',            tag:'HIGH' },
-  { time:'12:58', color:'blue',  agent:'New Domain Agent',         text:'Low-rep NRD — telemetry-api[.]io (3d old)',           tag:'MED' },
-  { time:'12:30', color:'blue',  agent:'Threat Intel Agent',       text:'ET SCAN Nmap fired — internal 10.4.0.44',             tag:'MED' },
-  { time:'11:44', color:'green', agent:'New Domain Agent',         text:'New CDN subdomain — Fastly, low risk',                tag:'LOW' }
-];
-
-const AGENT_TABLE = [
-  { a:'Beaconing Agent',           n:4, s:'active' },
-  { a:'DGA Agent',                 n:3, s:'active' },
-  { a:'JA3/JA4 Agent',             n:5, s:'active' },
-  { a:'New External IP Agent',     n:3, s:'active' },
-  { a:'Threat Intel Agent',        n:6, s:'active' },
-  { a:'New Domain Agent',          n:2, s:'active' },
-  { a:'ASOM Drafting Agent',       n:0, s:'standby' }
-];
-
-/* ═══════════════════════════════════════
-   RENDER — EVENTS
-═══════════════════════════════════════ */
+async function refreshOpsData() {
+  const sid = state.sessionId || new URLSearchParams(location.search).get('session_id') || 'demo';
+  const events = await api('/api/events?limit=100&session_id=' + encodeURIComponent(sid)).catch(() => []);
+  const cases = await api('/api/cases?session_id=' + encodeURIComponent(sid)).catch(() => []);
+  EVENTS = (events || []).map(normalizeEvent);
+  CASES = (cases || []).map(normalizeCase);
+  FEED = EVENTS.map(ev => ({time:ev.time, color:ev.sev==='crit'?'red':ev.sev==='high'?'amber':ev.sev==='medium'?'blue':'green', agent:ev.agent, text:ev.title, tag:ev.sevLabel}));
+  const counts = {};
+  EVENTS.forEach(ev => counts[ev.agent] = (counts[ev.agent] || 0) + 1);
+  AGENT_TABLE = Object.entries(counts).map(([a,n]) => ({a,n,s:'active'}));
+}
 function renderAll() { renderEvents(); renderDrawer(); renderCommander(); }
-
 function renderEvents() {
-  const list = document.getElementById('eventList');
-  list.innerHTML = '';
+  const list = document.getElementById('eventList'); if (!list) return; list.innerHTML = '';
   EVENTS.forEach((ev, i) => {
-    const row = document.createElement('div');
-    row.className = 'event-row ' + ev.sev;
-    row.id = 'evrow-' + i;
-    row.onclick = () => selectEvent(i);
-    row.innerHTML = `
-      <div class="event-row-top">
-        <div class="event-title">${i < 2 ? '<span class="new-indicator"></span>' : ''}${ev.title}</div>
-        <span class="sev-badge ${ev.sev}">${ev.sevLabel}</span>
-      </div>
-      <div class="event-snippet">${ev.snippet}</div>
-      <div class="event-meta">
-        <span class="event-agent">${ev.agent}</span>
-        <span class="event-time">${ev.time}</span>
-      </div>`;
+    const row = document.createElement('div'); row.className = 'event-row ' + ev.sev; row.id = 'evrow-' + i; row.onclick = () => selectEvent(i);
+    row.innerHTML = `<div class="event-row-top"><div class="event-title">${i < 2 ? '<span class="new-indicator"></span>' : ''}${escapeHtml(ev.title)}</div><span class="sev-badge ${ev.sev}">${escapeHtml(ev.sevLabel)}</span></div><div class="event-snippet">${escapeHtml(ev.snippet)}</div><div class="event-meta"><span class="event-agent">${escapeHtml(ev.agent)}</span><span class="event-time">${escapeHtml(ev.time)}</span></div>`;
     list.appendChild(row);
   });
 }
-
 function selectEvent(i) {
   document.querySelectorAll('.event-row').forEach(r => r.classList.remove('selected'));
-  document.getElementById('evrow-' + i).classList.add('selected');
-
-  const ev = EVENTS[i];
+  const row=document.getElementById('evrow-' + i); if(row) row.classList.add('selected');
+  const ev = EVENTS[i]; if (!ev) return;
   document.getElementById('detailEmpty').style.display = 'none';
-  const content = document.getElementById('detailContent');
-  content.classList.add('visible');
-
-  const kvHTML = ev.enrichment.map(k =>
-    `<div class="detail-kv">
-      <div class="detail-kv-key">${k.l}</div>
-      <div class="detail-kv-val ${k.c}">${k.v}</div>
-    </div>`
-  ).join('');
-
-  const tagsHTML = ev.tags.map(t => `<span class="enrich-tag ${t.c}">${t.t}</span>`).join('');
-
-  content.innerHTML = `
-    <div class="detail-header">
-      <div class="detail-title-block">
-        <div class="detail-eyebrow">${ev.id} &nbsp;·&nbsp; ${ev.agent} &nbsp;·&nbsp; ${ev.time}</div>
-        <div class="detail-title">${ev.title}</div>
-      </div>
-      <div class="detail-actions">
-        <button class="btn btn-sm btn-log-toggle" id="logBtn" onclick="toggleLog()">Show Log</button>
-        <button class="btn btn-sm btn-dismiss" onclick="dismissEvent(${i})">Dismiss</button>
-        <button class="btn btn-sm btn-escalate" onclick="escalateEvent(${i})">Escalate →</button>
-      </div>
-    </div>
-
-    <div class="detail-section">
-      <div class="detail-section-label">Agent Explanation</div>
-      <div class="detail-text">${ev.explanation}</div>
-    </div>
-
-    <div class="detail-section">
-      <div class="detail-section-label">Key Fields</div>
-      <div class="detail-kv-grid">${kvHTML}</div>
-    </div>
-
-    <div class="detail-section">
-      <div class="detail-section-label">Enrichment &amp; Context</div>
-      <div class="enrichment-tags">${tagsHTML}</div>
-    </div>
-
-    <div class="detail-section">
-      <div class="detail-section-label">Recommended Next Question</div>
-      <div class="next-question">
-        <div class="next-q-label">⬡ Agent Recommends</div>
-        <div class="next-q-text">${ev.nextQ}</div>
-      </div>
-    </div>
-
-    <div class="detail-section">
-      <div class="detail-section-label">Raw Log Sample</div>
-      <div class="log-snippet" id="logSnippet">${ev.log}</div>
-    </div>`;
+  const content = document.getElementById('detailContent'); content.classList.add('visible');
+  const kvHTML = ev.enrichment.map(k => `<div class="detail-kv"><div class="detail-kv-key">${escapeHtml(k.l)}</div><div class="detail-kv-val ${escapeHtml(k.c)}">${escapeHtml(k.v)}</div></div>`).join('');
+  const tagsHTML = ev.tags.map(t => `<span class="enrich-tag ${escapeHtml(t.c)}">${escapeHtml(t.t)}</span>`).join('');
+  content.innerHTML = `<div class="detail-header"><div class="detail-title-block"><div class="detail-eyebrow">${escapeHtml(ev.id)} · ${escapeHtml(ev.agent)} · ${escapeHtml(ev.time)}</div><div class="detail-title">${escapeHtml(ev.title)}</div></div><div class="detail-actions"><button class="btn btn-sm btn-log-toggle" id="logBtn" onclick="toggleLog()">Show Log</button><button class="btn btn-sm btn-dismiss" onclick="dismissEvent(${i})">Dismiss</button><button class="btn btn-sm btn-escalate" onclick="escalateEvent(${i})">Escalate →</button></div></div><div class="detail-section"><div class="detail-section-label">Agent Explanation</div><div class="detail-text">${escapeHtml(ev.explanation)}</div></div><div class="detail-section"><div class="detail-section-label">Key Fields</div><div class="detail-kv-grid">${kvHTML}</div></div><div class="detail-section"><div class="detail-section-label">Enrichment & Context</div><div class="enrichment-tags">${tagsHTML}</div></div><div class="detail-section"><div class="detail-section-label">Recommended Next Question</div><div class="next-question"><div class="next-q-label">⬡ Agent Recommends</div><div class="next-q-text">${escapeHtml(ev.nextQ)}</div></div></div><div class="detail-section"><div class="detail-section-label">Raw Log Sample</div><pre class="log-snippet" id="logSnippet">${escapeHtml(ev.log)}</pre></div>`;
 }
-
-function toggleLog() {
-  const s = document.getElementById('logSnippet');
-  const b = document.getElementById('logBtn');
-  const v = s.classList.toggle('log-visible');
-  b.textContent = v ? 'Hide Log' : 'Show Log';
-}
-
-function dismissEvent(i) {
-  const r = document.getElementById('evrow-' + i);
-  r.style.opacity = '0.3';
-  r.style.pointerEvents = 'none';
-  document.getElementById('detailEmpty').style.display = 'flex';
-  document.getElementById('detailContent').classList.remove('visible');
-}
-
-function escalateEvent(i) {
-  const r = document.getElementById('evrow-' + i);
-  r.style.borderLeft = '3px solid var(--blue)';
-  const b = document.querySelector('.btn-escalate');
-  if (b) { b.textContent = '✓ Escalated'; b.style.background = 'var(--green)'; }
-}
-
-function setFilter(el) {
-  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active','crit','high-f'));
-  el.classList.add('active');
-}
-
-/* ═══════════════════════════════════════
-   RENDER — CASES DRAWER
-═══════════════════════════════════════ */
+function toggleLog() { const s=document.getElementById('logSnippet'), b=document.getElementById('logBtn'); if(!s||!b)return; const v=s.classList.toggle('log-visible') || s.classList.toggle('visible'); b.textContent = v ? 'Hide Log' : 'Show Log'; }
+async function dismissEvent(i) { const ev=EVENTS[i]; if(!ev)return; await fetch('/api/events/'+encodeURIComponent(ev.id)+'/dismiss',{method:'PATCH'}); ev.status='dismissed'; const r=document.getElementById('evrow-'+i); if(r){r.style.opacity='0.3';r.style.pointerEvents='none';} document.getElementById('detailEmpty').style.display='flex'; document.getElementById('detailContent').classList.remove('visible'); }
+async function escalateEvent(i) { const ev=EVENTS[i]; if(!ev)return; await fetch('/api/events/'+encodeURIComponent(ev.id)+'/escalate',{method:'PATCH'}); await refreshOpsData(); renderDrawer(); const r=document.getElementById('evrow-'+i); if(r) r.style.borderLeft='3px solid var(--blue)'; const b=document.querySelector('.btn-escalate'); if(b){b.textContent='✓ Escalated'; b.style.background='var(--green)';} }
+function setFilter(el, f='all') { document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active','crit','high-f')); el.classList.add('active'); document.querySelectorAll('.event-row').forEach((row,i)=>{row.style.display=(f==='all'||EVENTS[i]?.sev===f)?'block':'none';}); }
 let drawerOpen = false;
-
-function toggleDrawer() {
-  drawerOpen = !drawerOpen;
-  document.getElementById('casesDrawer').classList.toggle('open', drawerOpen);
-}
-
+function toggleDrawer() { drawerOpen = !drawerOpen; document.getElementById('casesDrawer').classList.toggle('open', drawerOpen); }
 function renderDrawer() {
-  document.getElementById('drawerBody').innerHTML = CASES.map(c => `
-    <div class="case-row">
-      <div class="case-id">${c.id}</div>
-      <div style="flex:1">
-        <div class="case-name">${c.name}</div>
-        <div style="font-family:var(--mono);font-size:10px;color:var(--text-muted);margin-top:3px;">${c.owner} &nbsp;·&nbsp; opened ${c.opened} &nbsp;·&nbsp; ${c.events} event${c.events!==1?'s':''}</div>
-        <div style="font-size:12px;color:var(--text-dim);margin-top:5px;line-height:1.4;">${c.summary}</div>
-        <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;">
-          ${c.iocs.map(ioc => `<span style="font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:2px;background:var(--red-glow);border:1px solid var(--red-dim);color:var(--red);">${ioc}</span>`).join('')}
-        </div>
-      </div>
-      <span class="case-status cs-${c.status}">${c.status}</span>
-    </div>`).join('');
+  const body=document.getElementById('drawerBody'); if(!body)return;
+  body.innerHTML = CASES.length ? CASES.map(c => `<div class="case-row"><div class="case-id">${escapeHtml(c.id)}</div><div style="flex:1"><div class="case-name">${escapeHtml(c.name)}</div><div style="font-family:var(--mono);font-size:10px;color:var(--text-muted);margin-top:3px;">${escapeHtml(c.owner)} · opened ${escapeHtml(c.opened)} · ${c.events} event</div><div style="font-size:12px;color:var(--text-dim);margin-top:5px;line-height:1.4;">${escapeHtml(c.summary)}</div><div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;">${(c.iocs||[]).map(ioc=>`<span style="font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:2px;background:var(--red-glow);border:1px solid var(--red-dim);color:var(--red);">${escapeHtml(ioc)}</span>`).join('')}</div></div><span class="case-status cs-${escapeHtml(c.status)}">${escapeHtml(c.status)}</span></div>`).join('') : '<div style="color:var(--text-muted);padding:20px">No escalated cases yet.</div>';
 }
-
-/* ═══════════════════════════════════════
-   RENDER — COMMANDER
-═══════════════════════════════════════ */
 function renderCommander() {
-  document.getElementById('asomList').innerHTML = ASOM_LINES.map(a => `
-    <div class="asom-line-row">
-      <div class="asom-num">${a.n}</div>
-      <div class="asom-text">${a.t}</div>
-      <span class="asom-status as-${a.s}">${a.s}</span>
-    </div>`).join('');
-
-  document.getElementById('actorList').innerHTML = ACTORS.map(a => `
-    <div class="actor-row">
-      <div class="actor-icon">⚠</div>
-      <div>
-        <div class="actor-name">${a.name}</div>
-        <div class="actor-detail">${a.detail}</div>
-      </div>
-      <div class="actor-conf">${a.conf}</div>
-    </div>`).join('');
-
-  document.getElementById('agentFeed').innerHTML = FEED.map((f, i) => `
-    <div class="feed-row">
-      <div class="feed-time">${f.time}</div>
-      <div class="feed-dot-col">
-        <div class="feed-dot ${f.color}"></div>
-        ${i < FEED.length - 1 ? '<div class="feed-line"></div>' : ''}
-      </div>
-      <div class="feed-body">
-        <div class="feed-agent">${f.agent}</div>
-        <div class="feed-text">${f.text} <span class="feed-tag">${f.tag}</span></div>
-      </div>
-    </div>`).join('');
-
-  document.getElementById('eventsTableBody').innerHTML = AGENT_TABLE.map(a => `
-    <tr>
-      <td>${a.a}</td>
-      <td>${a.n}</td>
-      <td><span class="asom-status as-${a.s}">${a.s}</span></td>
-    </tr>`).join('');
+  const asom=document.getElementById('asomList'); if(asom) asom.innerHTML = ASOM_LINES.map(a => `<div class="asom-line-row"><div class="asom-num">${a.n}</div><div class="asom-text">${a.t}</div><span class="asom-status as-${a.s}">${a.s}</span></div>`).join('');
+  const actors=document.getElementById('actorList'); if(actors) actors.innerHTML = ACTORS.map(a => `<div class="actor-row"><div class="actor-icon">⚠</div><div><div class="actor-name">${escapeHtml(a.name)}</div><div class="actor-detail">${escapeHtml(a.detail)}</div></div><div class="actor-conf">${escapeHtml(a.conf)}</div></div>`).join('');
+  const feed=document.getElementById('agentFeed'); if(feed) feed.innerHTML = FEED.map((f,i)=>`<div class="feed-row"><div class="feed-time">${escapeHtml(f.time)}</div><div class="feed-dot-col"><div class="feed-dot ${f.color}"></div>${i<FEED.length-1?'<div class="feed-line"></div>':''}</div><div class="feed-body"><div class="feed-agent">${escapeHtml(f.agent)}</div><div class="feed-text">${escapeHtml(f.text)} <span class="feed-tag">${escapeHtml(f.tag)}</span></div></div></div>`).join('');
+  const table=document.getElementById('eventsTableBody'); if(table) table.innerHTML = AGENT_TABLE.map(a=>`<tr><td>${escapeHtml(a.a)}</td><td>${a.n}</td><td><span class="asom-status as-${a.s}">${a.s}</span></td></tr>`).join('');
 }
-
-/* ═══════════════════════════════════════
-   INIT
-═══════════════════════════════════════ */
-// Live clock for commander
-function updateClock() {
-  const el = document.getElementById('cmdTimestamp');
-  if (el) el.textContent = new Date().toLocaleTimeString('en-GB', {
-    hour:'2-digit', minute:'2-digit', second:'2-digit'
-  }) + ' UTC';
-}
-setInterval(updateClock, 1000);
-updateClock();
-
-// Auto-run status check on deploy screen load
-setTimeout(() => {
-  document.querySelectorAll('.status-val').forEach((el, i) => {
-    setTimeout(() => {
-      el.className = 'status-val online';
-      el.textContent = 'Online';
-    }, i * 180);
-  });
-}, 600);
-</script>
-<script>const __launch=window.launchHunt;window.launchHunt=async function(){try{let b=await(await fetch('/api/setup/launch',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json();window.__spotterSession=b.data.session_id}catch(e){};return __launch?__launch():null};window.openAnalyst=()=>location.href='/operations.html?view=analyst&session_id='+(window.__spotterSession||'demo');window.openCommander=()=>location.href='/operations.html?view=commander&session_id='+(window.__spotterSession||'demo');</script></body>
+function updateClock() { const el=document.getElementById('cmdTimestamp'); if(el) el.textContent = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'}) + ' UTC'; }
+setInterval(updateClock, 1000); updateClock();
+loadHealth();
+</script></body>
 </html>

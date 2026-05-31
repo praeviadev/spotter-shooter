@@ -27,6 +27,8 @@ services:
     build: {context: ., dockerfile: api/Dockerfile}
     container_name: spotter-api
     env_file: .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on: {postgres: {condition: service_healthy}, redis: {condition: service_healthy}, qdrant: {condition: service_started}, minio: {condition: service_started}}
     restart: unless-stopped
   agents:
