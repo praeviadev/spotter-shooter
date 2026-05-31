@@ -155,65 +155,127 @@ Agents generate initial evidence-backed leads, and the analyst spends time valid
 
 ---
 
-## Suggested screenshots for the README
+## Visual walkthrough
 
-Add screenshots under `docs/screenshots/` and reference them in this README.
+The screenshots below are intended to make the value of Spotter-Shooter obvious at a glance. Add image files under `docs/screenshots/` using the filenames shown below, and GitHub will render the walkthrough automatically.
 
-Recommended screenshots:
+### 1. Deployment Console — mission readiness
 
-1. **Deployment Console — Health Check**
-   - Shows the tactical UI and stack readiness.
-   - Capture the first page with Postgres, Redis, Elastic, Qdrant, MinIO, LiteLLM, and worker status.
-
-2. **Elastic Telemetry Test**
-   - Show successful Elastic connection with `3,237,839` total docs and the loaded indices.
-   - This proves the platform is connected to real hunting data.
-
-3. **Agent Selection Screen**
-   - Show Tier 1 network agents and Tier 2 host agents.
-   - Good for communicating that this is a modular agent framework, not a single chatbot.
-
-4. **Launch Hunt Overlay**
-   - Capture the moment the hunt becomes active.
-   - This is a strong visual for presentations.
-
-5. **Analyst View — Finding Detail**
-   - Select a finding such as APT29 rundll32/script execution.
-   - Make sure the screenshot includes:
-     - agent explanation
-     - key fields
-     - matching events
-     - model used: `openai/gpt-4o-mini`
-     - recommended next question
-
-6. **Raw Log Sample Expanded**
-   - Show the raw evidence panel open.
-   - This helps prove the agent is grounded in telemetry, not just writing generic text.
-
-7. **Escalation Result**
-   - Show a finding after clicking Escalate.
-   - Include the created case in the active cases drawer.
-
-8. **Commander View**
-   - Show ASOM lines, agent feed, and events by agent.
-   - This screenshot sells leadership visibility.
-
-9. **Agent Admin Panel**
-   - Show built-in agents with enabled/disabled status and event counts.
-   - If comfortable, show a custom agent test result.
-
-10. **Kibana Dataset View**
-    - Show Kibana Discover or index/data view list with BOTSv3/APT29 indices.
-    - This reinforces that the demo is backed by realistic data volume.
-
-Example markdown once screenshots are added:
-
-```md
 ![Deployment health check](docs/screenshots/deployment-health.png)
+
+Spotter-Shooter opens with a deployment console instead of a generic dashboard. The first screen gives the operator an immediate readiness check across the supporting services required for an AI-assisted hunt: Postgres, Redis, Elastic, Qdrant, MinIO, model routing, and worker processes.
+
+This matters because the platform is designed for controlled security operations. Before the hunt begins, the operator can verify that the mission stack is healthy and that the system is ready to ingest documents, query telemetry, run agents, and preserve analyst decisions.
+
+**Suggested capture:** the first deployment page with all services showing online.
+
+---
+
+### 2. Elastic telemetry connection — proof of real data
+
 ![Elastic telemetry test](docs/screenshots/elastic-telemetry-test.png)
+
+The telemetry test is one of the most important screenshots. It shows that Spotter-Shooter is not just displaying static UI cards; it is connected to a live Elastic lab with over **3.2 million searchable security events**.
+
+The current lab includes BOTSv3, APT29, APT3, LSASS campaign telemetry, Log4Shell, and Golden SAML/ADFS data. This gives the demo realistic volume, noise, and adversary-emulation evidence for measuring analyst-vs-agent performance.
+
+**Suggested capture:** the Elastic connection result showing `3,237,839` total documents and the loaded indices.
+
+---
+
+### 3. Agent selection — modular hunting capability
+
+![Agent selection](docs/screenshots/agent-selection.png)
+
+Spotter-Shooter uses a modular agent model. Operators can start with default network-focused agents, then add host-focused agents when they have enough operational context to evaluate process, authentication, and account behavior.
+
+This distinction is important: host-based AI observations should be treated as leads requiring analyst validation, not final determinations. The product is designed to preserve that professional analyst-in-the-loop workflow.
+
+**Suggested capture:** the agent selection step showing Tier 1 network agents and Tier 2 host agents.
+
+---
+
+### 4. Hunt launch — from setup to active operation
+
+![Launch hunt](docs/screenshots/launch-hunt.png)
+
+The launch overlay marks the transition from configuration to active hunt. At this point, selected agents begin querying telemetry, producing findings, and preparing leads for analyst triage.
+
+This gives supervisors a clean mental model: deploy the mission, connect the data, choose the agents, then launch the hunt.
+
+**Suggested capture:** the launch overlay with the hunt marked active.
+
+---
+
+### 5. Analyst View — evidence-backed finding detail
+
 ![Analyst finding detail](docs/screenshots/analyst-finding-detail.png)
+
+Analyst View is where agent output becomes operationally useful. Each finding includes a severity, explanation, key fields, matching event count, model attribution, raw evidence, and a recommended next question.
+
+For the APT29 evaluation data, a strong screenshot is the rundll32/script execution finding. It demonstrates that the platform can surface a concrete adversary-emulation artifact and explain why it matters without hiding the evidence from the analyst.
+
+**Suggested capture:** an APT29 finding with `Model: openai/gpt-4o-mini`, matching events, agent explanation, and recommended next question visible.
+
+---
+
+### 6. Raw log evidence — grounded, not generic
+
+![Raw log sample](docs/screenshots/raw-log-sample.png)
+
+The raw log panel is critical for credibility. Spotter-Shooter should not ask analysts to trust a generated paragraph. The analyst needs to see the underlying event sample and decide whether the agent's interpretation is justified.
+
+This screenshot helps communicate the core product philosophy: AI accelerates triage, but evidence remains visible and reviewable.
+
+**Suggested capture:** the same Analyst View finding with the raw log sample expanded.
+
+---
+
+### 7. Escalation — turning a lead into a case
+
+![Escalation result](docs/screenshots/escalation-result.png)
+
+When an analyst validates a finding, they can escalate it into a case. This creates a clean handoff from agent-generated lead to human-reviewed operational work.
+
+This is the “shooter” side of Spotter-Shooter: agents spot the opportunity, but the analyst makes the decision to escalate, dismiss, or continue pivoting.
+
+**Suggested capture:** a finding after escalation with the created case visible in the active cases drawer.
+
+---
+
+### 8. Commander View — leadership visibility
+
 ![Commander overview](docs/screenshots/commander-overview.png)
-```
+
+Commander View gives leaders a concise operational picture without forcing them into raw logs. It shows ASOM-style progress, active cases, agent activity, and events grouped by agent.
+
+This view is designed for supervisors, team leads, and incident commanders who need to understand what the team knows, what is still uncertain, and where analyst attention is going.
+
+**Suggested capture:** Commander View showing ASOM lines, agent activity feed, and events by agent.
+
+---
+
+### 9. Agent Admin — managing the hunting team
+
+![Agent admin](docs/screenshots/agent-admin.png)
+
+The admin panel shows that Spotter-Shooter is an agent framework, not a fixed demo. Operators can view built-in agents, see status and event counts, create custom agents, test them against Elastic, enable or disable them, and archive agents that are no longer needed.
+
+This is especially useful for adapting the platform to a specific mission, environment, or supervisor-directed hunt objective.
+
+**Suggested capture:** `/admin/agents` showing built-in agent statuses and the custom-agent creation/test controls.
+
+---
+
+### 10. Kibana dataset view — independent verification
+
+![Kibana dataset view](docs/screenshots/kibana-dataset-view.png)
+
+A Kibana screenshot helps independently prove the lab's scale. It shows that the platform is backed by realistic data volume rather than a tiny curated demo set.
+
+For analyst-vs-agent comparisons, this is important context: both human analysts and agents are being evaluated against large, noisy telemetry, not a handful of hand-picked events.
+
+**Suggested capture:** Kibana Discover, data views, or index list showing `botsv3-raw`, `apt29-endpoint`, `apt29-zeek`, and related indices.
 
 ---
 
