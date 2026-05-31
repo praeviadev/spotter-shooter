@@ -397,14 +397,23 @@ async def cases(session_id: Optional[str] = None):
 
 
 @app.get("/api/agents")
-async def agents():
-    custom_rows = await (await P()).fetch("select * from custom_agents where archived_at is null order by created_at desc")
+async def agents(include_archived: bool = False):
+    p = await P()
+    custom_sql = "select * from custom_agents {} order by created_at desc".format("" if include_archived else "where archived_at is null")
+    custom_rows = await p.fetch(custom_sql)
+    event_counts = {r["agent"]: r["count"] for r in await p.fetch("select agent, count(*)::int as count from events group by agent")}
+    custom = []
+    for r in custom_rows:
+        d = rd(r)
+        d["status"] = "archived" if d.get("archived_at") else ("enabled" if d.get("enabled") else "disabled")
+        d["event_count"] = event_counts.get(d.get("role_string"), 0)
+        custom.append(d)
     return E({
         "built_in": [
-            {"name": n, "role_string": r, "telemetry_source": t, "tier": tier, "enabled": en}
+            {"name": n, "role_string": r, "telemetry_source": t, "tier": tier, "enabled": en, "status": "enabled" if en else "disabled", "event_count": event_counts.get(r, 0)}
             for n, r, t, tier, en in BUILTIN
         ],
-        "custom": [rd(r) for r in custom_rows],
+        "custom": custom,
     })
 
 
@@ -413,36 +422,92 @@ async def custom(payload: dict):
     role = payload.get("role_string") or snake(payload["name"])
     r = await (await P()).fetchrow(
         "insert into custom_agents(name,role_string,description,telemetry_source,tier,severity_default,confidence_threshold,detection_focus,key_fields,tag_rules,system_prompt_override,enabled,created_by) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) returning *",
-        payload["name"],
-        role,
-        payload.get("description", ""),
-        payload.get("telemetry_source", "Custom Query"),
-        payload.get("tier", "network"),
-        payload.get("severity_default", "medium"),
-        float(payload.get("confidence_threshold", 0.6)),
-        payload["detection_focus"],
-        json.dumps(payload.get("key_fields", [])),
-        json.dumps(payload.get("tag_rules", [])),
-        payload.get("system_prompt_override"),
-        bool(payload.get("enabled", False)),
-        payload.get("created_by", "admin"),
+        payload["name"], role, payload.get("description", ""), payload.get("telemetry_source", "Custom Query"), payload.get("tier", "network"),
+        payload.get("severity_default", "medium"), float(payload.get("confidence_threshold", 0.6)), payload["detection_focus"],
+        json.dumps(payload.get("key_fields", [])), json.dumps(payload.get("tag_rules", [])), payload.get("system_prompt_override"),
+        bool(payload.get("enabled", False)), payload.get("created_by", "admin"),
     )
     return E(rd(r))
 
 
+@app.patch("/api/agents/custom/{agent_id}")
+async def update_custom_agent(agent_id: str, payload: dict):
+    allowed = {"name", "description", "telemetry_source", "tier", "severity_default", "confidence_threshold", "detection_focus", "key_fields", "tag_rules", "system_prompt_override", "enabled"}
+    fields = []
+    vals = []
+    for key, value in (payload or {}).items():
+        if key not in allowed:
+            continue
+        if key in {"key_fields", "tag_rules"}:
+            value = json.dumps(value or [])
+        if key == "confidence_threshold":
+            value = float(value)
+        vals.append(value)
+        fields.append(f"{key}=${len(vals)}")
+    if not fields:
+        return E({"updated": False})
+    vals.append(uuid.UUID(agent_id))
+    sql = f"update custom_agents set {', '.join(fields)}, updated_at=now() where id=${len(vals)} returning *"
+    r = await (await P()).fetchrow(sql, *vals)
+    return E(rd(r) if r else None)
+
+
+@app.post("/api/agents/custom/{agent_id}/enable")
+async def enable_custom_agent(agent_id: str):
+    r = await (await P()).fetchrow("update custom_agents set enabled=true, archived_at=null, updated_at=now() where id=$1 returning *", uuid.UUID(agent_id))
+    return E(rd(r) if r else None)
+
+
+@app.post("/api/agents/custom/{agent_id}/disable")
+async def disable_custom_agent(agent_id: str):
+    r = await (await P()).fetchrow("update custom_agents set enabled=false, updated_at=now() where id=$1 returning *", uuid.UUID(agent_id))
+    return E(rd(r) if r else None)
+
+
+@app.delete("/api/agents/custom/{agent_id}")
+async def delete_custom_agent(agent_id: str, hard: bool = False):
+    p = await P()
+    if hard:
+        await p.execute("delete from custom_agents where id=$1", uuid.UUID(agent_id))
+        return E({"deleted": True, "hard": True})
+    r = await p.fetchrow("update custom_agents set enabled=false, archived_at=now(), updated_at=now() where id=$1 returning *", uuid.UUID(agent_id))
+    return E({"deleted": bool(r), "hard": False, "agent": rd(r) if r else None})
+
+
 @app.post("/api/agents/custom/{agent_id}/test")
 async def test_agent(agent_id: str):
+    p = await P()
+    agent = await p.fetchrow("select * from custom_agents where id=$1", uuid.UUID(agent_id))
+    query = "powershell OR rundll32 OR mimikatz OR lsass"
+    if agent and agent["detection_focus"]:
+        focus = agent["detection_focus"]
+        if "4769" in focus or "kerberoast" in focus.lower():
+            query = "4769 OR kerberoast OR kerberos OR RC4"
+        elif "powershell" in focus.lower():
+            query = "powershell OR encodedcommand OR invoke-webrequest"
     try:
-        hits = await es_request("GET", "/botsv3-raw/_search", {"size": 0, "query": {"query_string": {"query": "powershell OR rundll32 OR mimikatz OR lsass"}}})
+        hits = await es_request("GET", "/botsv3-raw,apt29-*,apt3-*,lsass-*/_search", {"size": 1, "query": {"query_string": {"query": query, "default_field": "*"}}})
         count = hits.get("hits", {}).get("total", {}).get("value", 0)
+        sample = hits.get("hits", {}).get("hits", [{}])[0].get("_source", {}) if count else {}
     except Exception:
-        count = 0
-    return E({"findings": [{"event_id": "DRYRUN-001", "severity": "medium", "title": "Custom Agent Preview", "confidence": 0.74}], "histogram": [{"bucket": "matching_events", "count": count}]})
+        count, sample = 0, {}
+    return E({"agent_id": agent_id, "query": query, "findings": [{"event_id": "DRYRUN-001", "severity": agent["severity_default"] if agent else "medium", "title": "Custom Agent Preview", "confidence": 0.74, "matching_events": count}], "histogram": [{"bucket": "matching_events", "count": count}], "sample": sample})
 
 
 @app.get("/admin/agents")
 async def admin():
-    return HTMLResponse("""<!doctype html><title>Spotter-Shooter Admin</title><body style="background:#0a0c0e;color:#c8d4da;font-family:monospace"><h1 style="color:#e8a427">ADMIN // CUSTOM AGENTS</h1><p>Built-ins and custom agents are loaded from /api/agents.</p><form onsubmit="save();return false"><input id=name placeholder="Agent Name" value="Kerberoasting Detection Agent"><br><textarea id=focus>Look for Windows Event 4769 requests using RC4 encryption.</textarea><br><button>Create Agent</button></form><pre id=out></pre><script>async function load(){out.textContent=JSON.stringify(await (await fetch('/api/agents')).json(),null,2)} async function save(){let b=await (await fetch('/api/agents/custom',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name.value,telemetry_source:'Windows Event Log',tier:'host',detection_focus:focus.value})})).json();out.textContent=JSON.stringify(b,null,2)} load()</script></body>""")
+    return HTMLResponse("""<!doctype html><html><head><title>Spotter-Shooter Admin</title><style>
+:root{--bg:#0a0c0e;--surface:#111416;--surface2:#181c1f;--border:#252b30;--amber:#e8a427;--green:#4caf6f;--red:#d9534f;--blue:#4a9eca;--text:#c8d4da;--dim:#6a8090}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}header{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}h1,h2{margin:0;color:var(--amber);text-transform:uppercase;letter-spacing:.08em}.wrap{padding:18px;display:grid;grid-template-columns:1.2fr .8fr;gap:18px}.panel{background:var(--surface);border:1px solid var(--border);padding:14px}.row{display:grid;grid-template-columns:1.3fr 1fr .7fr .7fr 1.4fr;gap:10px;align-items:center;border-top:1px solid var(--border);padding:9px 0}.head{color:var(--dim);font-size:11px;text-transform:uppercase}.badge{padding:2px 7px;border:1px solid var(--border);text-transform:uppercase;font-size:11px}.enabled{color:var(--green);border-color:var(--green)}.disabled{color:var(--dim)}.archived{color:var(--red);border-color:var(--red)}button,input,textarea,select{background:var(--surface2);color:var(--text);border:1px solid var(--border);padding:8px;font-family:inherit}button{cursor:pointer;text-transform:uppercase;color:var(--amber)}button:hover{border-color:var(--amber)}textarea{width:100%;height:90px}input,select{width:100%;margin-bottom:8px}.actions{display:flex;gap:6px;flex-wrap:wrap}pre{white-space:pre-wrap;background:#050607;border:1px solid var(--border);padding:10px;max-height:260px;overflow:auto}.small{color:var(--dim);font-size:12px}</style></head><body><header><h1>ADMIN // AGENT CONTROL</h1><div class='small'><a style='color:var(--blue)' href='/operations.html?view=analyst'>Analyst</a> · <a style='color:var(--blue)' href='/operations.html?view=commander'>Commander</a></div></header><div class='wrap'><section class='panel'><h2>Agent Status</h2><div class='row head'><div>Name</div><div>Role</div><div>Status</div><div>Events</div><div>Actions</div></div><div id='agents'></div></section><section class='panel'><h2>Create Custom Agent</h2><input id='name' placeholder='Agent Name' value='Kerberoasting Detection Agent'><input id='telemetry' placeholder='Telemetry Source' value='Windows Event Log'><select id='tier'><option>host</option><option>network</option></select><textarea id='focus'>Look for Windows Event 4769 requests using RC4 encryption.</textarea><label><input id='enabled' type='checkbox' style='width:auto'> Enabled</label><br><button onclick='save()'>Create Agent</button><h2 style='margin-top:18px'>Output</h2><pre id='out'>loading...</pre></section></div><script>
+async function api(p,o={}){let r=await fetch(p,o);let b=await r.json();if(!r.ok||b.success===false)throw new Error(b.error||r.status);return b.data}
+function esc(v){return String(v??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+async function load(){let d=await api('/api/agents?include_archived=true');let rows=[];for(const a of d.built_in){rows.push(row(a,false))}for(const a of d.custom){rows.push(row(a,true))}agents.innerHTML=rows.join('');out.textContent=JSON.stringify(d,null,2)}
+function row(a,custom){let st=a.status||((a.enabled)?'enabled':'disabled');let acts=custom?`<button onclick="test('${a.id}')">test</button><button onclick="toggle('${a.id}',${a.enabled?'false':'true'})">${a.enabled?'disable':'enable'}</button><button onclick="del('${a.id}')">delete</button>`:'built-in';return `<div class='row'><div>${esc(a.name)}</div><div>${esc(a.role_string)}</div><div><span class='badge ${st}'>${st}</span></div><div>${a.event_count||0}</div><div class='actions'>${acts}</div></div>`}
+async function save(){let payload={name:name.value,telemetry_source:telemetry.value,tier:tier.value,detection_focus:focus.value,enabled:enabled.checked};out.textContent=JSON.stringify(await api('/api/agents/custom',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),null,2);await load()}
+async function test(id){out.textContent=JSON.stringify(await api('/api/agents/custom/'+id+'/test',{method:'POST'}),null,2)}
+async function toggle(id,on){out.textContent=JSON.stringify(await api('/api/agents/custom/'+id+(on?'/enable':'/disable'),{method:'POST'}),null,2);await load()}
+async function del(id){if(!confirm('Archive this custom agent?'))return;out.textContent=JSON.stringify(await api('/api/agents/custom/'+id,{method:'DELETE'}),null,2);await load()}
+load().catch(e=>out.textContent=e.stack||String(e))
+</script></body></html>""")
 
 
 async def seed(sid: str, config=None):
