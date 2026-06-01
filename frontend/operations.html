@@ -1151,8 +1151,8 @@ body::before {
     <button class="role-btn" id="commanderBtn" onclick="switchView('commander')">Commander View</button>
     <button class="role-btn" onclick="goToKibana()">Go To Kibana</button>
     <button class="role-btn" onclick="openChat()">Chat</button>
-    <button class="role-btn" onclick="openAccounts()">Admin Panel</button>
-    <button class="role-btn admin-only" onclick="openOpsAdmin()">Admin Tools</button>
+    <button class="role-btn admin-btn" onclick="openAccounts()">Admin Panel</button>
+    <button class="role-btn admin-btn" onclick="openOpsAdmin()">Admin Tools</button>
   </div>
 
   <div class="header-right">
@@ -1430,6 +1430,7 @@ async function refreshData() {
   ONLINE = await api('/api/presence/online').catch(()=>[]);
   document.getElementById('readOnlyBanner').style.display = state.me?.read_only ? 'flex' : 'none';
   document.querySelectorAll('.admin-only').forEach(el=>el.style.display = state.me?.account?.privilege_level === 'admin' ? '' : 'none');
+  document.querySelectorAll('.admin-btn').forEach(el=>el.title = state.me?.account?.privilege_level === 'admin' ? 'Admin controls' : 'Login with an admin account to use this');
   updateCurrentUserBadge();
   renderOnline();
   FEED = EVENTS.map(ev => ({ time:ev.time, color:ev.sev==='crit'?'red':ev.sev==='high'?'amber':ev.sev==='medium'?'blue':'green', agent:ev.agent, text:ev.title, tag:ev.sevLabel }));
@@ -1532,7 +1533,7 @@ async function addTimelineToCase(){ if(!SELECTED_CASE)return; await api(`/api/ca
 async function finalizeCase(){ if(!SELECTED_CASE)return; await api(`/api/cases/${SELECTED_CASE.id}/finalize`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); await loadCaseDetail(SELECTED_CASE.id); }
 async function showIndicatorRelations(ev, enc) { const val=decodeURIComponent(enc); const d=await api('/api/indicators/'+encodeURIComponent(val)+'/related').catch(()=>({cases:[],events:[]})); const pop=document.getElementById('relationPop'); pop.style.left=(ev.clientX+12)+'px'; pop.style.top=(ev.clientY+12)+'px'; pop.style.display='block'; pop.innerHTML=`<b>${escapeHtml(val)}</b><br><br>Cases:<br>${(d.cases||[]).map(c=>`${escapeHtml(c.case_id)} // ${escapeHtml(c.name)}`).join('<br>')||'none'}<br><br>Events:<br>${(d.events||[]).map(e=>`${escapeHtml(e.event_id)} // ${escapeHtml(e.title)}`).join('<br>')||'none'}`; }
 function hideIndicatorRelations(){ document.getElementById('relationPop').style.display='none'; }
-async function openAccounts(){ if(!state.token){ openLogin(); return; } if(state.me?.account?.privilege_level !== 'admin'){ alert('Admin privileges required.'); return; } document.getElementById('accountPanel').classList.add('open'); await renderAccounts(); }
+async function openAccounts(){ if(!state.token){ openLogin(); return; } await refreshData(); if(state.me?.account?.privilege_level !== 'admin'){ alert('Admin privileges required. Log in with an admin account.'); return; } document.getElementById('accountPanel').classList.add('open'); await renderAccounts(); }
 function closeAccounts(){ document.getElementById('accountPanel').classList.remove('open'); }
 function opts(arr, selected=''){ return (arr||[]).map(x=>`<option value="${escapeHtml(x)}" ${x===selected?'selected':''}>${escapeHtml(x)}</option>`).join(''); }
 function personName(a){ return escapeHtml(a.formatted_name || [a.rank, a.last_name, a.first_name].filter(Boolean).join(' ') || a.display_name || a.username || 'Analyst'); }
@@ -1578,7 +1579,7 @@ async function saveTeam(){ const payload={token:state.token, team_type:teamType.
 async function viewTeam(id){ const t=await api('/api/teams/'+encodeURIComponent(id)); document.getElementById('teamList').innerHTML=`<div class="profile-card">${t.logo_url?`<img class="team-logo" src="${escapeHtml(t.logo_url)}">`:''}<b>${teamLabel(t)}</b><br>${escapeHtml(t.location||'')} · ${escapeHtml(t.phone||'')}<br>${escapeHtml(t.description||'')}</div><h3>Members</h3>${(t.members||[]).map(a=>`<div class="profile-card"><b onclick="openProfile('${a.id}')" style="cursor:pointer">${personName(a)}</b><br><span class="tl-time">${escapeHtml(a.work_role)} · ${escapeHtml(a.skill_level)}</span></div>`).join('')||'<div class="tl-body">No members.</div>'}<button class="btn btn-expand" onclick="renderTeamAdmin()">Back To Teams</button>`; }
 
 function renderOnline(){ const b=document.getElementById('onlineBody'), c=document.getElementById('onlineCount'); if(!b)return; if(c)c.textContent=String(ONLINE.length); b.innerHTML=ONLINE.length?ONLINE.map(a=>`<div class="online-row"><span class="online-dot"></span><div><div class="online-name" onclick="openProfile('${a.id}')" style="cursor:pointer">${personName(a)}</div><div class="online-meta">${escapeHtml(a.skill_level||'')} ${escapeHtml(a.work_role||'')} - ${teamLinkFromAccount(a)}</div></div></div>`).join(''):'<div class="online-meta">No active users.</div>'; }
-async function openOpsAdmin(){ if(state.me?.account?.privilege_level !== 'admin'){ alert('Admin privileges required.'); return; } document.getElementById('opsAdminPanel').classList.add('open'); await loadOpsConfig(); }
+async function openOpsAdmin(){ if(!state.token){ openLogin(); return; } await refreshData(); if(state.me?.account?.privilege_level !== 'admin'){ alert('Admin privileges required. Log in with an admin account.'); return; } document.getElementById('opsAdminPanel').classList.add('open'); await loadOpsConfig(); }
 function closeOpsAdmin(){ document.getElementById('opsAdminPanel').classList.remove('open'); }
 async function loadOpsConfig(){ OPS_CONFIG=await api('/api/setup/config').catch(()=>OPS_CONFIG); const t=document.getElementById('opsTwofa'), k=document.getElementById('opsKibanaUrl'); if(t)t.value=String(!!OPS_CONFIG.security?.twofa_required); if(k)k.value=OPS_CONFIG.kibana?.url||''; await Promise.all([renderEnrichAdmin(), renderAgentAdmin(), renderAdminOverview()]); }
 async function saveOpsConfig(){ const payload={security:{twofa_required:document.getElementById('opsTwofa')?.value==='true'},kibana:{url:document.getElementById('opsKibanaUrl')?.value||''}}; OPS_CONFIG=await api('/api/setup/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); document.getElementById('opsConfigResult').textContent='Saved. 2FA '+(OPS_CONFIG.security.twofa_required?'required':'optional')+'. Kibana '+(OPS_CONFIG.kibana.url||'not configured')+'.'; }
