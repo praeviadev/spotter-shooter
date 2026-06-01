@@ -32,9 +32,10 @@ class Settings(BaseSettings):
     openrouter_api_key: str = ""
     openrouter_model: str = "openai/gpt-4o-mini"
     app_secret: str = "spotter-local-secret-change-me"
-    kibana_url: str = "https://kibana.praeviaintel.com"
+    kibana_url: str = ""
     smtp_url: str = ""
     sms_webhook_url: str = ""
+    twofa_required: bool = False
 
     class Config:
         env_file = ".env"
@@ -72,6 +73,11 @@ async def migrate_db(db):
         "alter table accounts add column if not exists team_id uuid",
         "create table if not exists teams (id uuid primary key default gen_random_uuid(), team_type text not null default 'CPT', number text unique not null, name text not null, description text default '', logo_url text default '', location text default '', phone text default '', email text default '', notes text default '', team_lead_id uuid, deputy_team_lead_id uuid, planner_id uuid, ncoic_id uuid, created_at timestamptz default now(), updated_at timestamptz default now())",
         "create table if not exists auth_sessions (token text primary key, account_id uuid references accounts(id) on delete cascade, created_at timestamptz default now(), expires_at timestamptz not null)",
+        "alter table auth_sessions add column if not exists last_seen_at timestamptz default now()",
+        "alter table auth_sessions add column if not exists current_view text default ''",
+        "create table if not exists app_settings (key text primary key, value jsonb not null default '{}'::jsonb, updated_at timestamptz default now())",
+        "insert into app_settings(key,value) values ('security', jsonb_build_object('twofa_required', false, 'smtp_url_configured', false, 'sms_webhook_url_configured', false)) on conflict(key) do nothing",
+        "insert into app_settings(key,value) values ('kibana', jsonb_build_object('url', '')) on conflict(key) do nothing",
         "create table if not exists login_challenges (id uuid primary key default gen_random_uuid(), account_id uuid references accounts(id) on delete cascade, code_hash text not null, destination text default '', method text default 'email', expires_at timestamptz not null, used_at timestamptz, created_at timestamptz default now())",
         "create table if not exists case_members (case_id uuid references cases(id) on delete cascade, account_id uuid references accounts(id) on delete cascade, role text default 'supporting analyst', joined_at timestamptz default now(), primary key(case_id, account_id))",
         "create table if not exists case_indicators (id uuid primary key default gen_random_uuid(), case_id uuid references cases(id) on delete cascade, indicator_type text not null, value text not null, source text default 'analyst', description text default '', created_by uuid references accounts(id), created_at timestamptz default now(), unique(case_id, indicator_type, value))",
@@ -133,8 +139,8 @@ def account_public(r):
     d = rd(r)
     d.pop("password_hash", None)
     d["formatted_name"] = format_person(r)
-    if d.get("team_name") or d.get("name"):
-        d["team_display"] = d.get("team_name") or d.get("name")
+    if d.get("team_name") or d.get("name") or d.get("team_number") or d.get("number"):
+        d["team_display"] = team_display(d)
     return d
 
 
@@ -153,6 +159,37 @@ async def send_otp(method: str, destination: str, code: str):
             await c.post(settings.smtp_url, json={"to": destination, "subject": "Spotter-Shooter login code", "text": f"Your login code is {code}"})
         return {"delivered": True}
     return {"delivered": False, "demo_code": code, "note": "Configure SMTP_URL or SMS_WEBHOOK_URL for real delivery."}
+
+
+async def get_setting(p, key: str, default=None):
+    row = await p.fetchrow("select value from app_settings where key=$1", key)
+    if not row:
+        return default if default is not None else {}
+    value = row["value"]
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except Exception:
+            return default if default is not None else {}
+    return value or (default if default is not None else {})
+
+
+async def upsert_setting(p, key: str, value: dict):
+    return await p.fetchrow("insert into app_settings(key,value,updated_at) values($1,$2::jsonb,now()) on conflict(key) do update set value=excluded.value, updated_at=now() returning *", key, json.dumps(value))
+
+
+async def security_config(p):
+    cfg = await get_setting(p, "security", {})
+    return {
+        "twofa_required": bool(cfg.get("twofa_required", settings.twofa_required)),
+        "smtp_url_configured": bool(settings.smtp_url or cfg.get("smtp_url_configured")),
+        "sms_webhook_url_configured": bool(settings.sms_webhook_url or cfg.get("sms_webhook_url_configured")),
+    }
+
+
+async def kibana_config(p):
+    cfg = await get_setting(p, "kibana", {})
+    return {"url": (cfg.get("url") or settings.kibana_url or "").strip()}
 
 
 def extract_indicators_from_event(event_row):
@@ -412,7 +449,16 @@ def format_person(row) -> str:
 
 def team_display(row) -> str:
     d = dict(row)
-    return (d.get("name") or "").strip() or " ".join(x for x in [d.get("team_type"), d.get("number")] if x).strip() or "Unassigned"
+    typ = (d.get("team_type") or "").strip().upper()
+    num = (d.get("team_number") or d.get("number") or "").strip()
+    base = "National Cyber Protection Team" if typ == "NCPT" else "Cyber Protection Team"
+    if num:
+        return f"{num} {base}"
+    name = (d.get("team_name") or d.get("name") or "").strip()
+    m = re.match(r"^(\d+)\s+(National\s+Cyber\s+Protection\s+Team|Cyber\s+Protection\s+Team)$", name, re.I)
+    if m:
+        return f"{m.group(1)} {m.group(2)}"
+    return name or "Unassigned"
 
 
 def _jsonish(v):
@@ -833,6 +879,11 @@ async def auth_login(payload: dict):
     a = await p.fetchrow("select * from accounts where username=$1 or email=$1 or phone=$1", username)
     if not a or not verify_password(password, a["password_hash"]):
         return E(None, error="invalid username/password")
+    sec = await security_config(p)
+    if not sec["twofa_required"]:
+        token = secrets.token_urlsafe(32)
+        await p.execute("insert into auth_sessions(token,account_id,expires_at,last_seen_at,current_view) values($1,$2,now()+interval '12 hours',now(),$3)", token, a["id"], "login")
+        return E({"token": token, "account": account_public(a), "twofa_required": False})
     destination = a["phone"] if method == "sms" else a["email"]
     if not destination:
         destination = a["contact"] or a["email"] or a["phone"] or "demo-local"
@@ -850,7 +901,7 @@ async def auth_verify(payload: dict):
         return E(None, error="invalid or expired code")
     token = secrets.token_urlsafe(32)
     await p.execute("update login_challenges set used_at=now() where id=$1", ch["id"])
-    await p.execute("insert into auth_sessions(token,account_id,expires_at) values($1,$2,now()+interval '12 hours')", token, ch["account_id"])
+    await p.execute("insert into auth_sessions(token,account_id,expires_at,last_seen_at,current_view) values($1,$2,now()+interval '12 hours',now(),$3)", token, ch["account_id"], "login")
     a = await p.fetchrow("select * from accounts where id=$1", ch["account_id"])
     return E({"token": token, "account": account_public(a)})
 
@@ -929,7 +980,7 @@ async def upsert_team(payload: dict):
         values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
         on conflict(number) do update set team_type=excluded.team_type, name=excluded.name, description=excluded.description, logo_url=excluded.logo_url, location=excluded.location, phone=excluded.phone, email=excluded.email, notes=excluded.notes, team_lead_id=excluded.team_lead_id, deputy_team_lead_id=excluded.deputy_team_lead_id, planner_id=excluded.planner_id, ncoic_id=excluded.ncoic_id, updated_at=now()
         returning *
-    """, payload.get("team_type", "CPT"), payload["number"], payload.get("name") or ("National Cyber Protection Team" if payload.get("team_type") == "NCPT" else "Cyber Protection Team"), payload.get("description", ""), payload.get("logo_url", ""), payload.get("location", ""), payload.get("phone", ""), payload.get("email", ""), payload.get("notes", ""), uuid.UUID(payload["team_lead_id"]) if payload.get("team_lead_id") else None, uuid.UUID(payload["deputy_team_lead_id"]) if payload.get("deputy_team_lead_id") else None, uuid.UUID(payload["planner_id"]) if payload.get("planner_id") else None, uuid.UUID(payload["ncoic_id"]) if payload.get("ncoic_id") else None)
+    """, payload.get("team_type", "CPT"), payload["number"], payload.get("name") or f"{payload['number']} {'National Cyber Protection Team' if payload.get('team_type') == 'NCPT' else 'Cyber Protection Team'}", payload.get("description", ""), payload.get("logo_url", ""), payload.get("location", ""), payload.get("phone", ""), payload.get("email", ""), payload.get("notes", ""), uuid.UUID(payload["team_lead_id"]) if payload.get("team_lead_id") else None, uuid.UUID(payload["deputy_team_lead_id"]) if payload.get("deputy_team_lead_id") else None, uuid.UUID(payload["planner_id"]) if payload.get("planner_id") else None, uuid.UUID(payload["ncoic_id"]) if payload.get("ncoic_id") else None)
     return E(rd(r))
 
 
@@ -948,25 +999,109 @@ async def team_detail(team_id: str):
 
 
 @app.get("/api/setup/kibana")
-async def kibana_info(url: Optional[str] = None):
-    return E({"url": url or settings.kibana_url, "note": "Kibana may require separate Traefik/basic-auth credentials."})
+async def kibana_info():
+    cfg = await kibana_config(await P())
+    return E({"url": cfg["url"], "configured": bool(cfg["url"]), "note": "Set Kibana URL during deployment/admin setup. No private default is shipped."})
+
+
+@app.get("/api/setup/config")
+async def setup_config():
+    p = await P()
+    return E({"security": await security_config(p), "kibana": await kibana_config(p)})
+
+
+@app.post("/api/setup/config")
+async def save_setup_config(payload: dict):
+    p = await P()
+    sec = payload.get("security") or {}
+    kib = payload.get("kibana") or {}
+    sec_cfg = await security_config(p)
+    sec_cfg["twofa_required"] = bool(sec.get("twofa_required"))
+    await upsert_setting(p, "security", sec_cfg)
+    await upsert_setting(p, "kibana", {"url": (kib.get("url") or "").strip()})
+    return E({"security": await security_config(p), "kibana": await kibana_config(p)})
+
+
+@app.post("/api/presence")
+async def update_presence(payload: dict):
+    token = payload.get("token", "")
+    if token:
+        await (await P()).execute("update auth_sessions set last_seen_at=now(), current_view=$2 where token=$1 and expires_at>now()", token, payload.get("view", "ops"))
+    return E({"ok": True})
+
+
+@app.get("/api/presence/online")
+async def online_users():
+    rows = await (await P()).fetch("""
+        select distinct on (a.id) a.*, s.last_seen_at, s.current_view
+        from auth_sessions s join accounts a on a.id=s.account_id
+        where s.expires_at>now() and s.last_seen_at>now()-interval '5 minutes'
+        order by a.id, s.last_seen_at desc
+    """)
+    out = []
+    for r in rows:
+        d = account_public(r)
+        d["last_seen_at"] = ser(r["last_seen_at"])
+        d["current_view"] = r["current_view"] or "ops"
+        out.append(d)
+    return E(out)
+
+
+def chatbot_query_from_question(question: str) -> str:
+    q = (question or "").lower()
+    terms = []
+    if any(x in q for x in ["powershell", "encoded", "iex", "script"]): terms.append("powershell OR encodedcommand OR iex")
+    if any(x in q for x in ["rundll32", "dll"]): terms.append("rundll32.exe")
+    if any(x in q for x in ["mimikatz", "lsass", "credential", "creds", "dump"]): terms.append("mimikatz OR lsass OR procdump OR comsvcs")
+    if any(x in q for x in ["ssh", "password", "login", "auth"]): terms.append("sshd OR failed password OR accepted password OR logon")
+    if any(x in q for x in ["aws", "cloud", "cloudtrail", "guardduty"]): terms.append("aws OR cloudtrail OR guardduty")
+    if any(x in q for x in ["sql", "mysql", "database"]): terms.append("mysql OR SELECT OR CONNECT")
+    ips = re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", question or "")
+    procs = re.findall(r"\b[a-zA-Z0-9_\-]+\.exe\b", question or "")
+    terms.extend(ips + procs)
+    return " OR ".join(f"({t})" for t in terms[:6]) or "powershell OR rundll32.exe OR mimikatz OR sshd OR aws OR mysql"
+
+
+async def chatbot_elastic_context(question: str) -> dict:
+    query = chatbot_query_from_question(question)
+    try:
+        res = await es_request("GET", "/botsv3-raw,apt29-*,apt3-*,lsass-*,goldensaml-*,log4shell-*,spotter-zeek-*/_search", {
+            "size": 5,
+            "query": {"query_string": {"query": query, "default_field": "*"}},
+            "sort": [{"@timestamp": {"order": "desc", "unmapped_type": "date"}}],
+        }, timeout=12)
+        hits = res.get("hits", {})
+        total = hits.get("total", {}).get("value", 0) if isinstance(hits.get("total"), dict) else hits.get("total", 0)
+        samples = []
+        for h in hits.get("hits", []):
+            src = h.get("_source", {})
+            text = json.dumps(src, default=str)[:1800]
+            samples.append({"index": h.get("_index"), "id": h.get("_id"), "score": h.get("_score"), "sample": text})
+        return {"query": query, "total": total, "samples": samples}
+    except Exception as exc:
+        return {"query": query, "total": 0, "samples": [], "error": str(exc)[:500]}
 
 
 @app.post("/api/chat")
 async def chat(payload: dict):
     role = payload.get("role", "analyst")
     question = payload.get("message", "")[:2000]
-    context = {"role": role, "question": question, "events": [], "cases": []}
+    context = {"role": role, "question": question, "events": [], "cases": [], "elastic": {}}
     p = await P()
-    for r in await p.fetch("select event_id,title,severity,status,explanation from events order by updated_at desc limit 8"):
+    if payload.get("token"):
+        await p.execute("update auth_sessions set last_seen_at=now(), current_view=$2 where token=$1 and expires_at>now()", payload.get("token"), f"{role}_chat")
+    for r in await p.fetch("select event_id,title,severity,status,explanation,raw_log_sample from events order by updated_at desc limit 8"):
         context["events"].append(dict(r))
-    for r in await p.fetch("select case_id,name,status,final_output from cases order by updated_at desc limit 5"):
+    for r in await p.fetch("select case_id,name,status,final_output,narrative_summary from cases order by updated_at desc limit 5"):
         context["cases"].append(dict(r))
+    context["elastic"] = await chatbot_elastic_context(question)
     if settings.openrouter_api_key:
-        ans = await openrouter_agent_summary(f"{role}_chatbot", {"title": "Operator question", "question": question, "context": context, "fallback_explanation": "Answer from current case/event context."}, "medium")
-        return E({"answer": ans["explanation"] + "\n\nSuggested way ahead: " + ans["recommended_next_question"], "model": ans.get("model_used")})
+        ans = await openrouter_agent_summary(f"{role}_chatbot", {"title": "Operator question with live Elastic context", "question": question, "context": context, "fallback_explanation": "Answer from current case/event context and live Elastic search evidence."}, "medium")
+        return E({"answer": ans["explanation"] + "\n\nElastic query: " + context["elastic"].get("query", "") + " // matches: " + str(context["elastic"].get("total", 0)) + "\n\nSuggested way ahead: " + ans["recommended_next_question"], "model": ans.get("model_used"), "elastic": context["elastic"]})
     fallback = "Review the highest-severity open alerts, confirm raw evidence, and update the case timeline. " if role == "analyst" else "Focus the briefing on open cases, unresolved 5 Ws, affected assets, and decisions needed. "
-    return E({"answer": fallback + "Current context includes %d events and %d cases. Question: %s" % (len(context["events"]), len(context["cases"]), question), "model": "deterministic"})
+    samples = context["elastic"].get("samples", [])
+    sample_line = (" Sample: " + samples[0].get("sample", "")[:500]) if samples else ""
+    return E({"answer": fallback + "Current context includes %d events and %d cases. Elastic query `%s` returned %s matches.%s" % (len(context["events"]), len(context["cases"]), context["elastic"].get("query", ""), context["elastic"].get("total", 0), sample_line), "model": "deterministic+elastic", "elastic": context["elastic"]})
 
 
 @app.get("/api/enrichment/configs")
@@ -1186,7 +1321,17 @@ async def seed(sid: str, config=None):
 
 @app.post("/api/setup/launch")
 async def launch(payload: dict = {}):
-    r = await (await P()).fetchrow("insert into hunt_sessions(status,config) values('active',$1) returning *", json.dumps(payload or {}))
+    p = await P()
+    cfg = payload or {}
+    if "security" in cfg or "kibana" in cfg:
+        sec = cfg.get("security") or {}
+        kib = cfg.get("kibana") or {}
+        sec_cfg = await security_config(p)
+        if "twofa_required" in sec:
+            sec_cfg["twofa_required"] = bool(sec.get("twofa_required"))
+        await upsert_setting(p, "security", sec_cfg)
+        await upsert_setting(p, "kibana", {"url": (kib.get("url") or "").strip()})
+    r = await p.fetchrow("insert into hunt_sessions(status,config) values('active',$1) returning *", json.dumps(cfg))
     await seed(str(r["id"]), payload)
     return E({"session_id": str(r["id"]), "status": "active", "name": r["name"]})
 

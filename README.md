@@ -127,7 +127,7 @@ Read-only view. Please login or Create an Account.
 
 Account creation lives in the admin/account panel. Analysts can edit their own account. Admins can edit all accounts and create/update Cyber Protection Teams.
 
-The login flow includes a two-step challenge-code framework for email or cell phone verification. In a local/demo environment without `SMTP_URL` or `SMS_WEBHOOK_URL`, the code is shown in the UI for testing. In production, configure one of those delivery endpoints so the code is delivered out-of-band.
+The login flow includes a challenge-code framework for email or cell phone verification. 2FA can be enabled or opted out during deployment from the Review & Launch screen, and admins can change it later from Operational Console → Admin Tools. In a local/demo environment without `SMTP_URL` or `SMS_WEBHOOK_URL`, an enabled 2FA flow shows the code in the UI for testing. In production, configure one of those delivery endpoints so the code is delivered out-of-band.
 
 ### Analyst and Commander chatbots
 
@@ -497,3 +497,7 @@ Current focus:
 - improve custom agent authoring
 - improve evidence-grounded reporting
 - reduce false positives through analyst feedback
+
+## Admin-controlled Kibana and security settings
+
+No private Kibana URL is shipped in the app. `Go To Kibana` reads the URL configured during deployment or from Operational Console → Admin Tools. If blank, the button tells the admin to configure Kibana instead of opening an external site. Admin Tools also exposes PCAP upload and 2FA opt-in/opt-out controls, and is hidden from non-admin users.

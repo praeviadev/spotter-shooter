@@ -2490,6 +2490,14 @@ html, body { height: 100%; }
       <div class="review-key">Telemetry Volume</div>
       <div class="review-val" id="reviewTelemetryVolume" style="font-size:14px">Not tested</div>
     </div>
+    <div class="review-item">
+      <div class="review-key">2FA Login</div>
+      <div class="review-val" id="review2FA">Optional</div>
+    </div>
+    <div class="review-item">
+      <div class="review-key">Kibana Pivot</div>
+      <div class="review-val" id="reviewKibana" style="font-size:14px">Not configured</div>
+    </div>
   </div>
 
   <div class="card">
@@ -2523,6 +2531,26 @@ html, body { height: 100%; }
         <input type="checkbox">
         <span class="toggle-slider"></span>
       </label>
+    </div>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Require 2FA At Login</div>
+        <div class="toggle-sub">Admin can opt out for closed demos. If enabled, configure SMTP_URL or SMS_WEBHOOK_URL on the server.</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="twofaRequired" onchange="saveDeploymentConfig()">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <div class="form-row" style="margin-top:14px;">
+      <div class="form-group" style="width:100%;">
+        <label class="form-label">Kibana URL For Go To Kibana</label>
+        <input class="form-input" id="kibanaUrl" type="text" placeholder="https://your-kibana.example.mil or blank to disable" onchange="saveDeploymentConfig()">
+      </div>
+    </div>
+    <div class="warn-box" style="margin-top:10px;">
+      <div class="warn-label">Admin-Controlled External Links</div>
+      No private URLs are shipped. The Go To Kibana button only uses the URL entered here or saved through the setup API.
     </div>
   </div>
 
@@ -2791,7 +2819,9 @@ const state = {
   modelConfig: {},
   selectedAgentCount: 7,
   activeSeverityFilter: 'all',
-  alertSearch: ''
+  alertSearch: '',
+  security: { twofa_required: false },
+  kibana: { url: '' }
 };
 
 async function api(path, options = {}) {
@@ -2861,7 +2891,32 @@ function goTo(n) {
   document.querySelectorAll('.step-item')[n].classList.add('active');
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
-async function beginSetup() { await loadHealth(); setTimeout(() => goTo(1), 500); }
+async function beginSetup() { await loadHealth(); await loadDeploymentConfig(); setTimeout(() => goTo(1), 500); }
+async function loadDeploymentConfig() {
+  try {
+    const cfg = await api('/api/setup/config');
+    state.security = cfg.security || state.security;
+    state.kibana = cfg.kibana || state.kibana;
+    const twofa = document.getElementById('twofaRequired');
+    const kib = document.getElementById('kibanaUrl');
+    if (twofa) twofa.checked = !!state.security.twofa_required;
+    if (kib) kib.value = state.kibana.url || '';
+  } catch (e) {}
+}
+function readDeploymentConfig() {
+  return {
+    security: { twofa_required: !!document.getElementById('twofaRequired')?.checked },
+    kibana: { url: document.getElementById('kibanaUrl')?.value || '' }
+  };
+}
+async function saveDeploymentConfig() {
+  const cfg = readDeploymentConfig();
+  state.security = cfg.security;
+  state.kibana = cfg.kibana;
+  await api('/api/setup/config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(cfg)}).catch(()=>null);
+  updateReview();
+}
+
 function selectTelemetry(el, provider='elastic') {
   state.selectedTelemetry = provider;
   document.querySelectorAll('.provider-grid .provider-card').forEach(c => c.classList.remove('selected'));
@@ -2902,7 +2957,10 @@ function updateReview() {
   setText('reviewSelectedModel', model.model || 'not set');
   setText('reviewAgents', String(selectedAgents));
   const volume = state.telemetry?.total_docs ? Number(state.telemetry.total_docs).toLocaleString() + ' docs' : 'Not tested';
+  const cfg = readDeploymentConfig();
   setText('reviewTelemetryVolume', volume);
+  setText('review2FA', cfg.security.twofa_required ? 'Required' : 'Optional / Opted Out');
+  setText('reviewKibana', cfg.kibana.url || 'Not configured');
 }
 function applyModelPreset(provider) {
   const cfg = {...MODEL_PRESETS[provider], ...(state.modelConfig[provider] || {})};
@@ -3009,7 +3067,7 @@ async function launchHunt() {
   try {
     const selectedAgents = [...document.querySelectorAll('.agent-item.selected')].map(x => x.textContent.replace('✓','').trim());
     state.selectedAgentCount = selectedAgents.length;
-    const data = await api('/api/setup/launch', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({telemetry:state.telemetry, model:readModelForm(), agents:selectedAgents})});
+    const data = await api('/api/setup/launch', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({telemetry:state.telemetry, model:readModelForm(), agents:selectedAgents, ...readDeploymentConfig()})});
     state.sessionId = data.session_id;
     const agentBadge = document.getElementById('agentStackBadge');
     const agentText = document.getElementById('agentStackText');
@@ -3115,6 +3173,7 @@ function renderCommander() {
 function updateClock() { const el=document.getElementById('cmdTimestamp'); if(el) el.textContent = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'}) + ' UTC'; }
 setInterval(updateClock, 1000); updateClock();
 loadHealth();
+loadDeploymentConfig();
 applyModelPreset(state.selectedModel);
 </script></body>
 </html>

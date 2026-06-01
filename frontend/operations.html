@@ -1110,6 +1110,17 @@ body::before {
 .chat-log { max-height:360px; overflow:auto; padding:12px; border-bottom:1px solid var(--border); }
 .chat-msg { margin-bottom:10px; padding:8px; border:1px solid var(--border); background:var(--surface2); font-size:12px; line-height:1.45; }
 .team-logo { width:40px;height:40px;object-fit:cover;border:1px solid var(--border);background:#050607;margin-right:10px; }
+.admin-only { display:none; }
+.ops-admin-panel { position:fixed; inset:70px 40px 70px 40px; background:var(--surface); border:1px solid var(--border); z-index:195; display:none; overflow:auto; box-shadow:0 0 0 9999px rgba(0,0,0,.55); }
+.ops-admin-panel.open { display:block; }
+.online-panel { position:fixed; right:18px; bottom:18px; width:260px; background:var(--surface); border:1px solid var(--border); z-index:120; }
+.online-head { padding:9px 11px; border-bottom:1px solid var(--border); font-family:var(--display); font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--green); display:flex; justify-content:space-between; }
+.online-body { max-height:220px; overflow:auto; padding:8px; }
+.online-row { display:flex; align-items:center; gap:8px; padding:6px; border-bottom:1px solid rgba(255,255,255,.04); }
+.online-dot { width:7px; height:7px; background:var(--green); border-radius:50%; box-shadow:0 0 5px var(--green); }
+.online-name { font-family:var(--display); font-size:11px; color:var(--text); text-transform:uppercase; }
+.online-meta { font-family:var(--mono); font-size:9px; color:var(--text-muted); }
+
 
 </style>
 </head>
@@ -1126,7 +1137,7 @@ body::before {
   <div class="header-center">
     <button class="role-btn active" id="analystBtn" onclick="switchView('analyst')">Analyst View</button>
     <button class="role-btn" id="commanderBtn" onclick="switchView('commander')">Commander View</button>
-    <button class="role-btn" onclick="openAccounts()">Accounts</button>
+    <button class="role-btn admin-only" onclick="openAccounts()">Accounts</button><button class="role-btn admin-only" onclick="openOpsAdmin()">Admin Tools</button>
     <button class="role-btn" onclick="goToKibana()">Go To Kibana</button>
     <button class="role-btn" onclick="openChat()">Chat</button>
   </div>
@@ -1322,6 +1333,15 @@ body::before {
 
 <div class="login-panel" id="loginPanel"><div class="case-lab-head"><div class="case-lab-title">Login / 2FA</div><button class="case-close" onclick="closeLogin()">✕</button></div><div class="case-section-body case-form" id="loginBody"></div></div>
 <div class="chat-panel" id="chatPanel"><div class="case-lab-head"><div class="case-lab-title" id="chatTitle">Analyst Chatbot</div><button class="case-close" onclick="closeChat()">✕</button></div><div class="chat-log" id="chatLog"></div><div class="case-section-body case-form"><textarea id="chatInput" placeholder="Ask for a way ahead, case summary, pivot idea, commander brief, etc."></textarea><button class="btn btn-escalate" onclick="sendChat()">Ask</button></div></div>
+<div class="ops-admin-panel" id="opsAdminPanel">
+  <div class="case-lab-head"><div class="case-lab-title">Admin Tools // PCAP, Kibana, 2FA</div><button class="case-close" onclick="closeOpsAdmin()">✕</button></div>
+  <div class="case-section-body case-grid2">
+    <div class="case-section"><h3>PCAP Upload To Zeek</h3><div class="case-section-body case-form"><input id="opsPcapFile" type="file" accept=".pcap,.pcapng,.cap"><button class="btn btn-escalate" onclick="uploadOpsPcap()">Upload PCAP → Zeek → Elastic</button><div class="tl-body" id="opsPcapResult">Select a PCAP to create a spotter-zeek-* index.</div></div></div>
+    <div class="case-section"><h3>Admin Configuration</h3><div class="case-section-body case-form"><label>Require 2FA At Login</label><select id="opsTwofa"><option value="false">Opt Out / Optional</option><option value="true">Required</option></select><label>Kibana URL For Go To Kibana</label><input id="opsKibanaUrl" placeholder="https://your-kibana-host"><button class="btn btn-escalate" onclick="saveOpsConfig()">Save Admin Config</button><div class="tl-body" id="opsConfigResult">Private defaults are not shipped; set the URL here.</div></div></div>
+  </div>
+</div>
+<div class="online-panel" id="onlinePanel"><div class="online-head"><span>Who's Online</span><span id="onlineCount">0</span></div><div class="online-body" id="onlineBody"><div class="online-meta">No active users.</div></div></div>
+
 
 <script>
 const params = new URLSearchParams(location.search);
@@ -1341,6 +1361,8 @@ let ACCOUNTS = [];
 let ACCOUNT_OPTIONS = {};
 let SELECTED_CASE = null;
 let TEAMS = [];
+let ONLINE = [];
+let OPS_CONFIG = {security:{twofa_required:false}, kibana:{url:''}};
 
 function escapeHtml(v) { return String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
 function compactTime(v) { try { return new Date(v).toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'}); } catch { return v || ''; } }
@@ -1375,7 +1397,12 @@ async function refreshData() {
   ACCOUNT_OPTIONS = await api('/api/accounts/options').catch(() => ({}));
   TEAMS = await api('/api/teams').catch(() => []);
   state.me = await api('/api/auth/me?token=' + encodeURIComponent(state.token)).catch(()=>({read_only:true}));
+  OPS_CONFIG = await api('/api/setup/config').catch(()=>OPS_CONFIG);
+  await api('/api/presence',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:state.token,view:state.view})}).catch(()=>null);
+  ONLINE = await api('/api/presence/online').catch(()=>[]);
   document.getElementById('readOnlyBanner').style.display = state.me?.read_only ? 'flex' : 'none';
+  document.querySelectorAll('.admin-only').forEach(el=>el.style.display = state.me?.account?.privilege_level === 'admin' ? '' : 'none');
+  renderOnline();
   FEED = EVENTS.map(ev => ({ time:ev.time, color:ev.sev==='crit'?'red':ev.sev==='high'?'amber':ev.sev==='medium'?'blue':'green', agent:ev.agent, text:ev.title, tag:ev.sevLabel }));
   const counts = {}; EVENTS.forEach(ev => counts[ev.agent] = (counts[ev.agent] || 0) + 1);
   AGENT_TABLE = Object.entries(counts).map(([agent,count]) => ({ agent, count, status:'active' }));
@@ -1467,7 +1494,7 @@ async function addTimelineToCase(){ if(!SELECTED_CASE)return; await api(`/api/ca
 async function finalizeCase(){ if(!SELECTED_CASE)return; await api(`/api/cases/${SELECTED_CASE.id}/finalize`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); await loadCaseDetail(SELECTED_CASE.id); }
 async function showIndicatorRelations(ev, enc) { const val=decodeURIComponent(enc); const d=await api('/api/indicators/'+encodeURIComponent(val)+'/related').catch(()=>({cases:[],events:[]})); const pop=document.getElementById('relationPop'); pop.style.left=(ev.clientX+12)+'px'; pop.style.top=(ev.clientY+12)+'px'; pop.style.display='block'; pop.innerHTML=`<b>${escapeHtml(val)}</b><br><br>Cases:<br>${(d.cases||[]).map(c=>`${escapeHtml(c.case_id)} // ${escapeHtml(c.name)}`).join('<br>')||'none'}<br><br>Events:<br>${(d.events||[]).map(e=>`${escapeHtml(e.event_id)} // ${escapeHtml(e.title)}`).join('<br>')||'none'}`; }
 function hideIndicatorRelations(){ document.getElementById('relationPop').style.display='none'; }
-async function openAccounts(){ document.getElementById('accountPanel').classList.add('open'); await renderAccounts(); }
+async function openAccounts(){ if(state.me?.account?.privilege_level !== 'admin'){ alert('Admin privileges required.'); return; } document.getElementById('accountPanel').classList.add('open'); await renderAccounts(); }
 function closeAccounts(){ document.getElementById('accountPanel').classList.remove('open'); }
 function opts(arr, selected=''){ return (arr||[]).map(x=>`<option value="${escapeHtml(x)}" ${x===selected?'selected':''}>${escapeHtml(x)}</option>`).join(''); }
 function personName(a){ return escapeHtml(a.formatted_name || [a.rank, a.last_name, a.first_name].filter(Boolean).join(' ') || a.display_name || a.username || 'Analyst'); }
@@ -1494,14 +1521,21 @@ function renderTeamAdmin(){
 }
 async function saveTeam(){ const payload={token:state.token, team_type:teamType.value, number:teamNumber.value, name:teamName.value, logo_url:teamLogo.value, location:teamLocation.value, phone:teamPhone.value, email:teamEmail.value, description:teamDesc.value, notes:teamNotes.value, team_lead_id:teamLead.value, deputy_team_lead_id:teamDeputy.value, planner_id:teamPlanner.value, ncoic_id:teamNcoic.value}; await api('/api/teams',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); await refreshData(); await renderAccounts(); }
 async function viewTeam(id){ const t=await api('/api/teams/'+encodeURIComponent(id)); document.getElementById('teamList').innerHTML=`<div class="profile-card">${t.logo_url?`<img class="team-logo" src="${escapeHtml(t.logo_url)}">`:''}<b>${teamLabel(t)}</b><br>${escapeHtml(t.location||'')} · ${escapeHtml(t.phone||'')}<br>${escapeHtml(t.description||'')}</div><h3>Members</h3>${(t.members||[]).map(a=>`<div class="profile-card"><b>${personName(a)}</b><br><span class="tl-time">${escapeHtml(a.work_role)} · ${escapeHtml(a.skill_level)}</span></div>`).join('')||'<div class="tl-body">No members.</div>'}<button class="btn btn-expand" onclick="renderTeamAdmin()">Back To Teams</button>`; }
+
+function renderOnline(){ const b=document.getElementById('onlineBody'), c=document.getElementById('onlineCount'); if(!b)return; if(c)c.textContent=String(ONLINE.length); b.innerHTML=ONLINE.length?ONLINE.map(a=>`<div class="online-row"><span class="online-dot"></span><div><div class="online-name">${personName(a)}</div><div class="online-meta">${escapeHtml(a.current_view||'ops')} · ${accountTeamLabel(a)}</div></div></div>`).join(''):'<div class="online-meta">No active users.</div>'; }
+async function openOpsAdmin(){ if(state.me?.account?.privilege_level !== 'admin'){ alert('Admin privileges required.'); return; } document.getElementById('opsAdminPanel').classList.add('open'); await loadOpsConfig(); }
+function closeOpsAdmin(){ document.getElementById('opsAdminPanel').classList.remove('open'); }
+async function loadOpsConfig(){ OPS_CONFIG=await api('/api/setup/config').catch(()=>OPS_CONFIG); const t=document.getElementById('opsTwofa'), k=document.getElementById('opsKibanaUrl'); if(t)t.value=String(!!OPS_CONFIG.security?.twofa_required); if(k)k.value=OPS_CONFIG.kibana?.url||''; }
+async function saveOpsConfig(){ const payload={security:{twofa_required:document.getElementById('opsTwofa')?.value==='true'},kibana:{url:document.getElementById('opsKibanaUrl')?.value||''}}; OPS_CONFIG=await api('/api/setup/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); document.getElementById('opsConfigResult').textContent='Saved. 2FA '+(OPS_CONFIG.security.twofa_required?'required':'optional')+'. Kibana '+(OPS_CONFIG.kibana.url||'not configured')+'.'; }
+async function uploadOpsPcap(){ if(state.me?.account?.privilege_level !== 'admin'){ alert('Admin privileges required.'); return; } const file=document.getElementById('opsPcapFile')?.files?.[0]; const r=document.getElementById('opsPcapResult'); if(!file){r.textContent='Select a PCAP first.'; return;} r.textContent='Uploading and running Zeek...'; const fd=new FormData(); fd.append('file', file); const data=await api('/api/pcap/upload',{method:'POST',body:fd}); r.textContent=`PCAP indexed: ${data.index} // ${(data.logs||[]).join(', ')||'no logs'} // ${Number(data.indexed_docs||0).toLocaleString()} docs`; }
 function openLogin(){ document.getElementById('loginPanel').classList.add('open'); document.getElementById('loginBody').innerHTML=`<input id="loginUser" placeholder="Username / Email / Phone"><input id="loginPass" type="password" placeholder="Password"><select id="loginMethod"><option value="email">Email Code</option><option value="sms">Cell Phone Code</option></select><button class="btn btn-escalate" onclick="requestLogin()">Send 2FA Code</button><div id="loginResult"></div>`; }
 function closeLogin(){ document.getElementById('loginPanel').classList.remove('open'); }
-async function requestLogin(){ const d=await api('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:loginUser.value,password:loginPass.value,method:loginMethod.value})}).catch(e=>({error:e.message})); if(d.error){loginResult.textContent=d.error;return;} loginResult.innerHTML=`<input id="loginCode" placeholder="6-digit code" value="${d.demo_code||''}"><button class="btn btn-escalate" onclick="verifyLogin('${d.challenge_id}')">Verify</button><div class="tl-time">${escapeHtml(d.note||'Code sent')}</div>`; }
+async function requestLogin(){ const d=await api('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:loginUser.value,password:loginPass.value,method:loginMethod.value})}).catch(e=>({error:e.message})); if(d.error){loginResult.textContent=d.error;return;} if(d.token){ state.token=d.token; localStorage.setItem('spotterToken', d.token); closeLogin(); await refreshData(); renderEvents(); renderDrawer(); renderCommander(); return; } loginResult.innerHTML=`<input id="loginCode" placeholder="6-digit code" value="${d.demo_code||''}"><button class="btn btn-escalate" onclick="verifyLogin('${d.challenge_id}')">Verify</button><div class="tl-time">${escapeHtml(d.note||'Code sent')}</div>`; }
 async function verifyLogin(id){ const d=await api('/api/auth/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({challenge_id:id,code:loginCode.value})}); state.token=d.token; localStorage.setItem('spotterToken', d.token); closeLogin(); await refreshData(); renderEvents(); renderDrawer(); renderCommander(); }
 function openChat(){ document.getElementById('chatPanel').classList.add('open'); document.getElementById('chatTitle').textContent=(state.view==='commander'?'Commander':'Analyst')+' Chatbot'; }
 function closeChat(){ document.getElementById('chatPanel').classList.remove('open'); }
 async function sendChat(){ const msg=chatInput.value; if(!msg)return; chatLog.innerHTML+=`<div class="chat-msg"><b>You:</b> ${escapeHtml(msg)}</div>`; chatInput.value=''; const d=await api('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role:state.view,message:msg,token:state.token})}); chatLog.innerHTML+=`<div class="chat-msg"><b>Spotter-Shooter:</b><br>${escapeHtml(d.answer)}</div>`; chatLog.scrollTop=chatLog.scrollHeight; }
-async function goToKibana(){ const d=await api('/api/setup/kibana'); window.open(d.url,'_blank'); }
+async function goToKibana(){ const d=await api('/api/setup/kibana'); if(!d.url){ alert('Kibana URL is not configured. Admin Tools → set Kibana URL.'); return; } window.open(d.url,'_blank'); }
 function renderCommander() {
   renderStats();
   document.getElementById('asomList').innerHTML = CASES.map(c => `<div class="asom-line-row" onclick="openCaseLab('${escapeHtml(c.id)}')"><div class="asom-num">${escapeHtml(c.id)}</div><div class="asom-text">${escapeHtml(c.name)}</div><span class="asom-status ${c.status==='open'?'active':c.status==='closed'?'done':'pending'}">${escapeHtml(c.status)}</span></div>`).join('') || '<div class="asom-line-row"><div class="asom-text">No cases yet.</div></div>';
@@ -1525,5 +1559,6 @@ async function init() {
 }
 setInterval(() => { const el=document.getElementById('cmdTimestamp'); if(el) el.textContent = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'}) + ' UTC'; }, 1000);
 init().catch(e => { console.error(e); renderEvents(); renderDrawer(); renderCommander(); switchView(state.view); });
+setInterval(async()=>{ await api('/api/presence',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:state.token,view:state.view})}).catch(()=>null); ONLINE=await api('/api/presence/online').catch(()=>[]); renderOnline(); }, 30000);
 </script></body>
 </html>
