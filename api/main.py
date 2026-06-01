@@ -762,7 +762,7 @@ async def case_detail(case_id: str):
     related = {}
     for ind in indicators:
         related[ind["value"]] = await indicator_related(p, ind["value"])
-    return E({**case_obj(c, len(events_rows), len(members)), "events": [ev(e) for e in events_rows], "members": [rd(m) for m in members], "indicators": [rd(i) for i in indicators], "timeline": [rd(t) for t in timeline], "indicator_related": related})
+    return E({**case_obj(c, len(events_rows), len(members)), "events": [ev(e) for e in events_rows], "members": [account_public(m) for m in members], "indicators": [rd(i) for i in indicators], "timeline": [rd(t) for t in timeline], "indicator_related": related})
 
 
 async def indicator_related(p, value: str):
@@ -952,8 +952,6 @@ async def account_detail(account_id: str, token: str = ""):
     a = await p.fetchrow("select a.*, t.name as team_name, t.number as team_number, t.team_type from accounts a left join teams t on t.id=a.team_id where a.id=$1 or a.username=$2", uuid.UUID(account_id) if re.match(r"^[0-9a-f-]{36}$", account_id, re.I) else None, account_id)
     if not a:
         return E(None, error="account not found")
-    if not can_edit_account(actor, a["id"]):
-        return E(None, error="not authorized")
     cases_rows = await p.fetch("select c.case_id,c.name,c.status,c.updated_at,cm.role from case_members cm join cases c on c.id=cm.case_id where cm.account_id=$1 order by c.updated_at desc", a["id"])
     return E({**account_public(a), "cases": [dict(r) for r in cases_rows]})
 
