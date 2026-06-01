@@ -1051,8 +1051,10 @@ async def update_presence(payload: dict):
 @app.get("/api/presence/online")
 async def online_users():
     rows = await (await P()).fetch("""
-        select distinct on (a.id) a.*, s.last_seen_at, s.current_view
-        from auth_sessions s join accounts a on a.id=s.account_id
+        select distinct on (a.id) a.*, t.name as team_name, t.number as team_number, t.team_type, s.last_seen_at, s.current_view
+        from auth_sessions s
+        join accounts a on a.id=s.account_id
+        left join teams t on t.id=a.team_id
         where s.expires_at>now() and s.last_seen_at>now()-interval '5 minutes'
         order by a.id, s.last_seen_at desc
     """)
