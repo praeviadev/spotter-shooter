@@ -98,11 +98,11 @@ async def migrate_db(db):
 
 
 RANKS = {
-    "army": ["PVT", "PV2", "PFC", "SPC", "CPL", "SGT", "SSG", "SFC", "MSG", "1SG", "SGM", "CSM", "SMA", "WO1", "CW2", "CW3", "CW4", "CW5", "2LT", "1LT", "CPT", "MAJ", "LTC", "COL", "BG", "MG", "LTG", "GEN"],
-    "airforce": ["AB", "Amn", "A1C", "SrA", "SSgt", "TSgt", "MSgt", "SMSgt", "CMSgt", "CCM", "CMSAF", "2d Lt", "1st Lt", "Capt", "Maj", "Lt Col", "Col", "Brig Gen", "Maj Gen", "Lt Gen", "Gen"],
-    "coastguard": ["SR", "SA", "SN", "PO3", "PO2", "PO1", "CPO", "SCPO", "MCPO", "CMC", "MCPOCG", "ENS", "LTJG", "LT", "LCDR", "CDR", "CAPT", "RDML", "RADM", "VADM", "ADM"],
-    "navy": ["SR", "SA", "SN", "PO3", "PO2", "PO1", "CPO", "SCPO", "MCPO", "CMC", "MCPON", "ENS", "LTJG", "LT", "LCDR", "CDR", "CAPT", "RDML", "RADM", "VADM", "ADM", "FADM"],
-    "marines": ["Pvt", "PFC", "LCpl", "Cpl", "Sgt", "SSgt", "GySgt", "MSgt", "1stSgt", "MGySgt", "SgtMaj", "SMMC", "WO", "CWO2", "CWO3", "CWO4", "CWO5", "2ndLt", "1stLt", "Capt", "Maj", "LtCol", "Col", "BGen", "MajGen", "LtGen", "Gen"],
+    "army": ["CIV", "PVT", "PV2", "PFC", "SPC", "CPL", "SGT", "SSG", "SFC", "MSG", "1SG", "SGM", "CSM", "SMA", "WO1", "CW2", "CW3", "CW4", "CW5", "2LT", "1LT", "CPT", "MAJ", "LTC", "COL", "BG", "MG", "LTG", "GEN"],
+    "airforce": ["CIV", "AB", "Amn", "A1C", "SrA", "SSgt", "TSgt", "MSgt", "SMSgt", "CMSgt", "CCM", "CMSAF", "2d Lt", "1st Lt", "Capt", "Maj", "Lt Col", "Col", "Brig Gen", "Maj Gen", "Lt Gen", "Gen"],
+    "coastguard": ["CIV", "SR", "SA", "SN", "PO3", "PO2", "PO1", "CPO", "SCPO", "MCPO", "CMC", "MCPOCG", "ENS", "LTJG", "LT", "LCDR", "CDR", "CAPT", "RDML", "RADM", "VADM", "ADM"],
+    "navy": ["CIV", "SR", "SA", "SN", "PO3", "PO2", "PO1", "CPO", "SCPO", "MCPO", "CMC", "MCPON", "ENS", "LTJG", "LT", "LCDR", "CDR", "CAPT", "RDML", "RADM", "VADM", "ADM", "FADM"],
+    "marines": ["CIV", "Pvt", "PFC", "LCpl", "Cpl", "Sgt", "SSgt", "GySgt", "MSgt", "1stSgt", "MGySgt", "SgtMaj", "SMMC", "WO", "CWO2", "CWO3", "CWO4", "CWO5", "2ndLt", "1stLt", "Capt", "Maj", "LtCol", "Col", "BGen", "MajGen", "LtGen", "Gen"],
 }
 WORK_ROLES = ["Analytic Support Officer", "Data Engineer", "Host Analyst", "Network Analyst", "Planner", "Cyber Integration Technician", "Master Gunner", "Team Lead", "Deputy Team Lead", "NCOIC", "Commander"]
 SKILL_LEVELS = ["Basic", "Senior", "Master"]
@@ -235,7 +235,7 @@ async def P():
 
 @app.get("/")
 async def root():
-    return FileResponse(FRONTEND / "deployment.html")
+    return FileResponse(FRONTEND / "operations.html")
 
 
 @app.get("/deployment.html")
@@ -329,12 +329,13 @@ async def openrouter_agent_summary(agent: str, evidence: dict, severity: str = "
             "recommended_next_question": "Review the raw evidence and correlate with host/user context before escalation.",
             "confidence": 0.45,
             "model_used": "not_configured",
+            "who": "", "what": "", "when": "", "where": "", "why": "", "how": "",
         }
     prompt = {
         "agent": agent,
         "severity": severity,
         "evidence": evidence,
-        "task": "Return concise JSON with keys title, explanation, recommended_next_question, confidence. Make it sound like a SOC hunting agent. Do not invent facts outside evidence."
+        "task": "Return concise JSON with keys title, explanation, recommended_next_question, confidence. Also include: who (threat actor identity or compromised user account, or unknown), what (MITRE ATT&CK technique ID and technique name, e.g. T1047 Windows Management Instrumentation), where (host name or IP address), why (attacker intent or operational objective), how (how did the attacker gain initial access: misconfiguration, CVE exploitation, credential compromise, social engineering, living-off-the-land, etc.). When available populate attacker-facing fields (who, what, where, why, how); otherwise use 'not yet determined'. Make the response read like a professional SOC analyst brief. Do not invent facts outside evidence."
     }
     headers = {"Authorization": f"Bearer {settings.openrouter_api_key}", "Content-Type": "application/json", "HTTP-Referer": "http://127.0.0.1:8097", "X-Title": "Spotter-Shooter MVP"}
     payload = {"model": settings.openrouter_model, "messages": [{"role": "system", "content": "You are a professional threat hunting agent. Reply only with compact JSON."}, {"role": "user", "content": json.dumps(prompt, default=str)}], "temperature": 0.2, "max_tokens": 450}
@@ -361,6 +362,12 @@ async def openrouter_agent_summary(agent: str, evidence: dict, severity: str = "
             "recommended_next_question": str(data.get("recommended_next_question") or "What correlated host/user activity supports this finding?")[:800],
             "confidence": max(0, min(1, conf)),
             "model_used": settings.openrouter_model,
+            "who": str(data.get("who", ""))[:300],
+            "what": str(data.get("what", ""))[:300],
+            "when": str(data.get("when", ""))[:200],
+            "where": str(data.get("where", ""))[:300],
+            "why": str(data.get("why", ""))[:400],
+            "how": str(data.get("how", ""))[:400],
         }
     except Exception as exc:
         msg = str(exc)[:220] or exc.__class__.__name__
@@ -370,6 +377,7 @@ async def openrouter_agent_summary(agent: str, evidence: dict, severity: str = "
             "recommended_next_question": "Review the raw evidence and retry the model-backed agent test if needed.",
             "confidence": 0.40,
             "model_used": "error",
+            "who": "", "what": "", "when": "", "where": "", "why": "", "how": "",
         }
 
 
@@ -705,19 +713,50 @@ async def build_case_final(p, case_uuid):
     titles = "; ".join([e["title"] for e in events[:5]]) or c["name"]
     indicators = ", ".join([f"{i['indicator_type']}:{i['value']}" for i in inds[:12]]) or "none confirmed"
     bluf = c["bluf"] or f"BLUF/SO WHAT: {sev.upper()} case {c['case_id']} requires analyst action because correlated alerts indicate {c['name']}."
+    # Try to extract who/what/when/where/why/how from event agent_summary fields
+    extracted = {}
+    extracted_how = ""
+    for ev in events:
+        ag = _jsonish(ev.get("agent_summary"))
+        if ag:
+            for k in ("who","what","when","where","why","how"):
+                if k in ag and ag[k]:
+                    extracted[k] = ag[k]
+        # Also check fields directly on the event row
+        for k in ("who","what","when","where","why","how"):
+            v = ev.get(k)
+            if v and k not in extracted:
+                extracted[k] = v
+        if "how" in ag and ag["how"] and not extracted_how:
+            extracted_how = ag["how"]
+
     five_ws = _jsonish(c["five_ws"])
+    how_val = c.get("how", "") or extracted_how
     if not isinstance(five_ws, dict) or not five_ws:
+        # Derive when range from events
+        when_first = None
+        when_last = None
+        for ev in events:
+            ts = ev.get("created_at") or ev.get("occurred_at")
+            if ts:
+                ts_str = ser(ts)
+                when_first = ts_str if not when_first else min(when_first, ts_str)
+                when_last = ts_str if not when_last else max(when_last, ts_str)
+        when_range = when_first if not when_last else f"{when_first} → {when_last}"
+
         five_ws = {
-            "who": "Unknown operator / attribution pending",
-            "what": titles,
-            "when": ser(c["created_at"]),
-            "where": indicators,
-            "why": "Determine scope, impact, and whether activity represents compromise.",
+            "who": extracted.get("who", "Unknown threat actor; compromised user not yet identified from telemetry"),
+            "what": extracted.get("what", f"{titles} — correlate with MITRE ATT&CK techniques and event details above"),
+            "when": extracted.get("when", when_range or ser(c["created_at"])),
+            "where": extracted.get("where", f"IP address or host name: {indicators} — verify workstation names, department, and network segment context"),
+            "why": extracted.get("why", "Attacker intent not yet determined — review for data theft, persistence, lateral movement, or disruption objectives"),
         }
+        if not how_val:
+            how_val = extracted.get("how", "Initial access vector not yet determined — review for misconfiguration, social engineering, CVE exploitation, credential compromise, or living-off-the-land techniques")
     technical = c["technical_summary"] or c["narrative_summary"] or "Technical summary pending analyst validation."
     way = c["way_ahead"] or "Validate indicators, pivot across related telemetry, request network-owner context, scope affected assets/users, and decide containment/reporting actions."
-    final = f"{bluf}\n\n5 Ws:\n- Who: {five_ws.get('who','')}\n- What: {five_ws.get('what','')}\n- When: {five_ws.get('when','')}\n- Where: {five_ws.get('where','')}\n- Why: {five_ws.get('why','')}\n\nTechnical Summary:\n{technical}\n\nWay Ahead:\n{way}\n\nAnalyst / Work Role:\n{lead}"
-    await p.execute("update cases set bluf=$2,five_ws=$3,technical_summary=$4,way_ahead=$5,final_output=$6,updated_at=now() where id=$1", case_uuid, bluf, json.dumps(five_ws), technical, way, final)
+    final = f"{bluf}\n\n5 Ws:\n- Who: {five_ws.get('who','')}\n- What: {five_ws.get('what','')}\n- When: {five_ws.get('when','')}\n- Where: {five_ws.get('where','')}\n- Why: {five_ws.get('why','')}\n\nHow: {how_val or 'Not yet determined'}\n\nTechnical Summary:\n{technical}\n\nWay Ahead:\n{way}\n\nAnalyst / Work Role:\n{lead}"
+    await p.execute("update cases set bluf=$2,five_ws=$3,technical_summary=$4,way_ahead=$5,final_output=$6,how=$7,updated_at=now() where id=$1", case_uuid, bluf, json.dumps(five_ws), technical, way, final, how_val)
     return final
 
 
@@ -751,7 +790,7 @@ def case_obj(r, event_count=0, member_count=0):
         "uuid": ser(r["id"]), "id": r["case_id"], "case_id": r["case_id"], "name": r["name"], "owner": r["owner"],
         "summary": r["narrative_summary"], "status": r["status"], "iocs": _jsonish(r["ioc_tags"]), "opened": ser(r["created_at"]),
         "updated_at": ser(r["updated_at"]), "events": event_count, "members": member_count, "bluf": r["bluf"],
-        "five_ws": _jsonish(r["five_ws"]), "technical_summary": r["technical_summary"], "way_ahead": r["way_ahead"], "final_output": r["final_output"]
+        "five_ws": _jsonish(r["five_ws"]), "technical_summary": r["technical_summary"], "way_ahead": r["way_ahead"], "final_output": r["final_output"], "how": r.get("how", "") or ""
     }
 
 
@@ -867,7 +906,7 @@ async def finalize_case(case_id: str, payload: dict = {}):
         return E(None, error="case not found")
     fields = []
     vals = []
-    for key in ["bluf", "technical_summary", "way_ahead", "status"]:
+    for key in ["bluf", "technical_summary", "way_ahead", "how", "status"]:
         if key in payload:
             vals.append(payload[key]); fields.append(f"{key}=${len(vals)}")
     if "five_ws" in payload:
@@ -886,8 +925,10 @@ async def account_options():
 
 @app.get("/api/auth/me")
 async def auth_me(token: str = ""):
+    if not token:
+        return E({"authenticated": False, "read_only": True, "account": None, "message": "Read-only view. Please login or Create an Account."})
     actor = await get_actor(await P(), token)
-    return E({"authenticated": bool(token), "read_only": not bool(token), "account": account_public(actor), "message": "Read-only view. Please login or Create an Account." if not token else "Authenticated"})
+    return E({"authenticated": True, "read_only": False, "account": account_public(actor), "message": "Authenticated"})
 
 
 @app.post("/api/auth/login")
@@ -975,6 +1016,34 @@ async def account_detail(account_id: str, token: str = ""):
     cases_rows = await p.fetch("select c.case_id,c.name,c.status,c.updated_at,cm.role from case_members cm join cases c on c.id=cm.case_id where cm.account_id=$1 order by c.updated_at desc", a["id"])
     return E({**account_public(a), "cases": [dict(r) for r in cases_rows]})
 
+
+@app.post("/api/accounts/self-edit")
+async def self_edit_account(payload: dict):
+    """Non-admin users can edit their own profile only."""
+    p = await P()
+    actor = await get_actor(p, payload.get("token", ""))
+    if not actor:
+        return E(None, error="must be authenticated")
+    # Analysts cannot change privilege level
+    payload["privilege_level"] = actor["privilege_level"]
+    first_name, last_name, display_name = normalize_person_name(payload)
+    password_hash = hash_password(payload.get("password")) if payload.get("password") else actor.get("password_hash", "")
+    team_id = uuid.UUID(payload["team_id"]) if payload.get("team_id") else None
+    r = await p.fetchrow("""
+        update accounts
+        set first_name=$1, last_name=$2, display_name=$3, service_branch=$4, rank=$5,
+            work_role=$6, skill_level=$7, team=$8, bio=$9, certs=$10, degrees=$11,
+            years_experience=$12, contact=$13, email=$14, phone=$15,
+            team_id=$16, updated_at=now(), password_hash=case when length($17)>0 then $17 else password_hash end
+        where id=$18 returning *
+    """, first_name, last_name, display_name or actor["display_name"],
+        payload.get("service_branch",""), payload.get("rank",""),
+        payload.get("work_role",""), payload.get("skill_level",""),
+        payload.get("team",""), payload.get("bio",""), payload.get("certs",""),
+        payload.get("degrees",""), int(payload.get("years_experience") or 0),
+        payload.get("contact",""), payload.get("email",""), payload.get("phone",""),
+        team_id, password_hash if password_hash and payload.get("password") else "", actor["id"])
+    return E(account_public(r) if r else None)
 
 @app.delete("/api/accounts/{account_id}")
 async def delete_account(account_id: str, token: str = ""):
@@ -1364,8 +1433,9 @@ async def seed(sid: str, config=None):
         ai = await openrouter_agent_summary(item["agent"], evidence, item["severity"])
         enrichment = item["enrichment"] + [{"label": "Matching Events", "value": str(count), "color": "highlight"}, {"label": "Model", "value": ai.get("model_used", "unknown"), "color": "highlight"}]
         tags = [{"text": "Live Backend", "type": "intel"}, {"text": "OpenRouter Agent" if ai.get("model_used") not in {"not_configured", "error"} else "Deterministic Agent", "type": "context"}]
+        agent_sum = json.dumps({k: ai.get(k, "") for k in ("who","what","when","where","why","how") if ai.get(k)})
         await p.execute(
-            "insert into events(event_id,session_id,agent,severity,title,snippet,explanation,enrichment,tags,recommended_next_question,raw_log_sample,confidence,metadata) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) on conflict(event_id) do update set session_id=excluded.session_id,status='new',updated_at=now(),title=excluded.title,explanation=excluded.explanation,recommended_next_question=excluded.recommended_next_question,raw_log_sample=excluded.raw_log_sample,enrichment=excluded.enrichment,tags=excluded.tags,confidence=excluded.confidence,metadata=excluded.metadata",
+            "insert into events(event_id,session_id,agent,severity,title,snippet,explanation,enrichment,tags,recommended_next_question,raw_log_sample,confidence,metadata,agent_summary) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) on conflict(event_id) do update set session_id=excluded.session_id,status='new',updated_at=now(),title=excluded.title,explanation=excluded.explanation,recommended_next_question=excluded.recommended_next_question,raw_log_sample=excluded.raw_log_sample,enrichment=excluded.enrichment,tags=excluded.tags,confidence=excluded.confidence,metadata=excluded.metadata,agent_summary=excluded.agent_summary",
             item["event_id"],
             uuid.UUID(sid),
             item["agent"],
@@ -1379,6 +1449,7 @@ async def seed(sid: str, config=None):
             json.dumps(raw)[:8000],
             ai["confidence"],
             json.dumps({"count": count, "query": item["query"], "model_used": ai.get("model_used")}),
+            agent_sum,
         )
     await p.execute(
         "insert into asom_lines(session_id,line_no,title,status) values($1,1,'Confirm suspicious PowerShell execution scope','active'),($1,2,'Validate credential-access indicators','pending'),($1,3,'Assess cloud-control-plane exposure','pending') on conflict do nothing",
@@ -1412,3 +1483,217 @@ async def ws(ws: WebSocket, session_id: str):
             await ws.send_json({"type": "heartbeat", "ts": datetime.now(timezone.utc).isoformat(), "session_id": session_id})
     except WebSocketDisconnect:
         pass
+
+# ═══════════════════════════════════════════════════════════
+# PASSWORD RESET
+# ═══════════════════════════════════════════════════════════
+@app.post("/api/auth/password-reset-request")
+async def password_reset_request(payload: dict):
+    username = payload.get("username", "").strip()
+    method = payload.get("method", "email")
+    if not username:
+        return E(None, error="username, email, or phone required")
+    a = await (await P()).fetchrow(
+        "select * from accounts where username=$1 or email=$1 or phone=$1", username
+    )
+    if not a:
+        return E({"delivered": True}, note="If the account exists, a reset code will be sent.")
+    code = f"{random.randint(100000, 999999)}"
+    dest = a["phone"] if method == "sms" else (a["email"] or a["contact"] or "demo")
+    r = await (await P()).fetchrow(
+        "insert into password_resets(account_id,code_hash,delivered_to,method,expires_at) values($1,$2,$3,$4,now()+interval '15 minutes') returning id",
+        a["id"], hash_code(code), dest, method
+    )
+    delivery = await send_otp(method, dest, code)
+    return E({"challenge_id": str(r["id"]), "method": method, "destination": dest, **delivery})
+
+@app.post("/api/auth/password-reset-verify")
+async def password_reset_verify(payload: dict):
+    code = payload.get("code", "").strip()
+    new_password = payload.get("new_password", "")
+    if len(new_password) < 6:
+        return E(None, error="password must be at least 6 characters")
+    p = await P()
+    ch = await p.fetchrow(
+        "select * from password_resets where id=$1 and used_at is null and expires_at>now()",
+        uuid.UUID(payload.get("challenge_id", ""))
+    )
+    if not ch or not hmac.compare_digest(ch["code_hash"], hash_code(code)):
+        return E(None, error="invalid or expired code")
+    await p.execute("update password_resets set used_at=now() where id=$1", ch["id"])
+    pw_hash = hash_password(new_password)
+    await p.execute("update accounts set password_hash=$1 where id=$2", pw_hash, ch["account_id"])
+    # Invalidate existing sessions
+    await p.execute("delete from auth_sessions where account_id=$1", ch["account_id"])
+    return {"reset": True}
+
+# ═══════════════════════════════════════════════════════════
+# AUDIT TRAIL
+# ═══════════════════════════════════════════════════════════
+@app.post("/api/audit")
+async def audit_log(payload: dict):
+    p = await P()
+    actor = await get_actor(p, payload.get("token", ""))
+    if actor["privilege_level"] != "admin":
+        return E(None, error="admin required")
+    await p.execute(
+        "insert into audit_trail(actor_id,action,target_type,target_id,details) values($1,$2,$3,$4,$5)",
+        actor["id"], payload.get("action", ""), payload.get("target_type", ""),
+        payload.get("target_id", ""), json.dumps(payload.get("details", {}))
+    )
+    return E({"logged": True})
+
+@app.get("/api/audit")
+async def audit_list(token: str = "", target_type: str = "", limit: int = 100):
+    p = await P()
+    actor = await get_actor(p, token)
+    if actor["privilege_level"] != "admin":
+        return E(None, error="admin required")
+    sql = "select at.*, a.display_name as actor_name from audit_trail at left join accounts a on a.id=at.actor_id order by created_at desc limit $1"
+    params = [limit]
+    if target_type:
+        sql = "select at.*, a.display_name as actor_name from audit_trail at left join accounts a on a.id=at.actor_id where at.target_type=$2 order by created_at desc limit $1"
+        params = [limit, target_type]
+    rows = await p.fetch(sql, *params)
+    return E([{"id":str(r["id"]),"actor_name":r["actor_name"],"action":r["action"],"target_type":r["target_type"],"target_id":r["target_id"],"details":r["details"],"created_at":ser(r["created_at"])} for r in rows])
+
+# ═══════════════════════════════════════════════════════════
+# NOTIFICATIONS
+# ═══════════════════════════════════════════════════════════
+@app.post("/api/notifications")
+async def create_notification(payload: dict):
+    p = await P()
+    r = await p.fetchrow(
+        "insert into notifications(recipient_id,sender_id,n_type,body,case_id,event_id) values($1,$2,$3,$4,$5,$6) returning *",
+        uuid.UUID(payload["recipient_id"]) if payload.get("recipient_id") else None,
+        uuid.UUID(payload["sender_id"]) if payload.get("sender_id") else None,
+        payload.get("n_type", "info"), payload.get("body", ""),
+        uuid.UUID(payload["case_id"]) if payload.get("case_id") and payload["case_id"] != "null" else None,
+        payload.get("event_id")
+    )
+    return E(rd(r) if r else None)
+
+@app.get("/api/notifications")
+async def list_notifications(token: str = ""):
+    p = await P()
+    actor = await get_actor(p, token)
+    rows = await p.fetch(
+        "select n.*, a.display_name as sender_name from notifications n left join accounts a on a.id=n.sender_id where n.recipient_id=$1 and n.read_at is null order by n.created_at desc limit 50",
+        actor["id"]
+    )
+    return E([{"id":str(r["id"]),"sender_name":r["sender_name"],"n_type":r["n_type"],"body":r["body"],"case_id":str(r["case_id"]) if r["case_id"] else None,"event_id":r["event_id"],"created_at":ser(r["created_at"])} for r in rows])
+
+@app.post("/api/notifications/{notif_id}/read")
+async def mark_notification_read(notif_id: str, payload: dict = {}):
+    await (await P()).execute("update notifications set read_at=now() where id=$1", uuid.UUID(notif_id))
+    return E({"read": True})
+
+@app.get("/api/notifications/unread-count")
+async def unread_count(token: str = ""):
+    actor = await get_actor(await P(), token)
+    count = await (await P()).fetchval("select count(*) from notifications where recipient_id=$1 and read_at is null", actor["id"])
+    return E({"count": count or 0})
+
+# ═══════════════════════════════════════════════════════════
+# SAVED PIVOTS (KQL/DSL → Kibana)
+# ═══════════════════════════════════════════════════════════
+@app.get("/api/pivots")
+async def list_pivots(token: str = ""):
+    p = await P()
+    actor = await get_actor(p, token)
+    rows = await p.fetch(
+        "select * from saved_pivots where owner_id=$1 or shared=true order by created_at desc",
+        actor["id"]
+    )
+    return E([rd(r) for r in rows])
+
+@app.post("/api/pivots")
+async def create_pivot(payload: dict):
+    p = await P()
+    actor = await get_actor(p, payload.get("token", ""))
+    r = await p.fetchrow(
+        "insert into saved_pivots(name,description,query,dsl,index_pattern,time_range,created_by,owner_id,shared) values($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *",
+        payload.get("name",""), payload.get("description",""), payload.get("query",""),
+        json.dumps(payload.get("dsl",{})), payload.get("index_pattern",""),
+        payload.get("time_range",""), actor["id"], actor["id"], payload.get("shared", False)
+    )
+    return E(rd(r) if r else None)
+
+@app.delete("/api/pivots/{pivot_id}")
+async def delete_pivot(pivot_id: str, payload: dict = {}):
+    p = await P()
+    actor = await get_actor(p, payload.get("token",""))
+    await p.execute("delete from saved_pivots where id=$1 and owner_id=$2", uuid.UUID(pivot_id), actor["id"])
+    return E({"deleted": True})
+
+@app.post("/api/cases/{case_id}/attck")
+async def map_attck(case_id: str, payload: dict):
+    p = await P()
+    c = await p.fetchrow("select id from cases where case_id=$1", case_id)
+    if not c: return E(None, error="case not found")
+    r = await p.fetchrow(
+        "insert into attck_mappings(case_id,technique_id,technique_name,evidence,created_by) values($1,$2,$3,$4,$5) returning *",
+        c["id"], payload["technique_id"], payload.get("technique_name",""),
+        payload.get("evidence",""),
+        uuid.UUID(payload["created_by"]) if payload.get("created_by") else None
+    )
+    return E(rd(r))
+
+@app.get("/api/cases/{case_id}/attck")
+async def get_attck(case_id: str, payload: dict = {}):
+    c = await (await P()).fetchrow("select id from cases where case_id=$1", case_id)
+    if not c: return E(None, error="case not found")
+    rows = await (await P()).fetch("select * from attck_mappings where case_id=$1 order by created_at", c["id"])
+    return E([rd(r) for r in rows])
+
+# ═══════════════════════════════════════════════════════════
+# CONTINUOUS AGENT CYCLE
+# ═══════════════════════════════════════════════════════════
+def get_agent_cycle():
+    return _agent_cycle_params
+_agent_cycle_params = {"interval_seconds": 120, "max_concurrent": 4, "last_run": 0, "enabled": True}
+
+def set_agent_cycle(**kw):
+    _agent_cycle_params.update(kw)
+
+@app.get("/api/agents/cycle")
+async def get_cycle(token: str = ""):
+    actor = await get_actor(await P(), token)
+    if actor["privilege_level"] != "admin":
+        return E(None, error="admin required")
+    return E(_agent_cycle_params)
+
+@app.post("/api/agents/cycle")
+async def update_cycle(payload: dict):
+    actor = await get_actor(await P(), payload.get("token",""))
+    if actor["privilege_level"] != "admin":
+        return E(None, error="admin required")
+    if "interval_seconds" in payload:
+        _agent_cycle_params["interval_seconds"] = max(30, int(payload["interval_seconds"]))
+    if "enabled" in payload:
+        _agent_cycle_params["enabled"] = bool(payload["enabled"])
+    if "max_concurrent" in payload:
+        _agent_cycle_params["max_concurrent"] = max(1, int(payload["max_concurrent"]))
+    return E(_agent_cycle_params)
+
+# Background agent loop: polls active sessions and re-runs agents every N seconds
+async def agent_cycle_loop():
+    """Background task: re-run hunting agents on active sessions"""
+    while True:
+        await asyncio.sleep(get_agent_cycle()["interval_seconds"])
+        if not _agent_cycle_params["enabled"]:
+            continue
+        try:
+            p = await P()
+            sessions = await p.fetch("select id from hunt_sessions where status='active'")
+            for s_row in sessions:
+                await seed(str(s_row["id"]))
+        except Exception as exc:
+            print(f"agent_cycle error: {exc}")
+            await asyncio.sleep(30)
+
+@app.on_event("startup")
+async def startup_event():
+    import asyncio
+    asyncio.create_task(agent_cycle_loop())
+

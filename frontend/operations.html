@@ -1148,8 +1148,8 @@ body::before {
 
   <div class="header-center">
     <button class="role-btn active" id="analystBtn" onclick="switchView('analyst')">Analyst View</button>
-    <button class="role-btn" id="commanderBtn" onclick="switchView('commander')">Commander View</button>
-    <button class="role-btn" onclick="goToKibana()">Go To Kibana</button>
+    <button class="role-btn commander-nav" id="commanderBtn" onclick="switchView('commander')">Commander View</button>
+    <button class="role-btn commander-nav" onclick="goToKibana()">Go To Kibana</button>
     <button class="role-btn" onclick="openChat()">Chat</button>
     <button class="role-btn admin-btn" onclick="openAccounts()">Admin Panel</button>
     <button class="role-btn admin-btn" onclick="openOpsAdmin()">Admin Tools</button>
@@ -1199,22 +1199,6 @@ body::before {
     </div>
   </div>
 
-  <!-- Bottom bar -->
-  <div class="analyst-bottom" id="analystBottomBar" style="position:fixed;bottom:0;left:0;right:0;z-index:100;">
-    <div class="bottom-stats">
-      <div class="bottom-stat">Events <span class="bottom-stat-val amber" id="statEvents">0</span></div>
-      <div class="bottom-stat">Escalated <span class="bottom-stat-val red" id="statEscalated">0</span></div>
-      <div class="bottom-stat">Dismissed <span class="bottom-stat-val" id="statDismissed">0</span></div>
-      <div class="bottom-stat">Cases Open <span class="bottom-stat-val green" id="statCases">0</span></div>
-    </div>
-    <div style="display:flex;gap:8px;align-items:center;">
-      <button class="cases-drawer-btn" onclick="toggleDrawer()">
-        Active Cases <span class="case-count-pill" id="caseCountPill">0</span>
-      </button>
-      <button class="bottom-hide-btn" onclick="hideBottomBar()">Hide</button>
-    </div>
-  </div>
-<button class="bottom-restore-btn" id="bottomRestoreBtn" onclick="showBottomBar()">Show Status Bar</button>
 </div>
 
 
@@ -1322,6 +1306,36 @@ body::before {
 </div>
 
 
+<!-- ════ SHARED BOTTOM BAR (persists in both Analyst and Commander views) ════ -->
+<div class="shared-bottom-bar" id="sharedBottomBar" style="position:fixed;bottom:0;left:0;right:0;z-index:100;">
+  <div class="bottom-stats">
+    <div class="bottom-stat">Events <span class="bottom-stat-val amber" id="statEvents">0</span></div>
+    <div class="bottom-stat">Escalated <span class="bottom-stat-val red" id="statEscalated">0</span></div>
+    <div class="bottom-stat">Dismissed <span class="bottom-stat-val" id="statDismissed">0</span></div>
+    <div class="bottom-stat">Cases <span class="bottom-stat-val green" id="statCases">0</span></div>
+  </div>
+  <div class="toolbar-actions">
+    <button class="cases-drawer-btn" onclick="toggleDrawer()">Active Cases <span class="case-count-pill" id="caseCountPill">0</span></button>
+    <button class="case-toolbar-btn" id="whosOnlineBtn" onclick="toggleOnlineToolbar()" title="Who's Online">
+      Online: <span id="onlineCountToolbar" class="online-dot green"></span> <span id="toolbarOnlineCount">0</span>
+    </button>
+    <button class="case-toolbar-btn" id="notifBtn" onclick="toggleNotificationsToolbar()" title="Notifications">
+      <span id="notifBadge" class="notif-badge" style="display:none">0</span> 🔔
+    </button>
+    <button class="bottom-hide-btn" onclick="hideBottomBar()">Hide</button>
+  </div>
+  <!-- Who's Online embedded panel -->
+  <div class="online-toolbar-panel" id="onlineToolbarPanel" style="display:none;">
+    <div class="online-toolbar-body" id="onlineToolbarBody"><div style="color:var(--text-muted);padding:8px;font-family:var(--mono);font-size:10px">No active users.</div></div>
+  </div>
+  <!-- Notifications embedded panel -->
+  <div class="notif-toolbar-panel" id="notifToolbarPanel" style="display:none;">
+    <div class="notif-toolbar-body" id="notifToolbarBody"><div style="color:var(--text-muted);padding:8px;font-family:var(--mono);font-size:10px">No notifications.</div></div>
+  </div>
+</div>
+<button class="bottom-restore-btn" id="bottomRestoreBtn" onclick="showBottomBar()">Show Status Bar</button>
+<div class="online-restore" id="onlineRestoreBtn" onclick="showOnlinePanel()" style="display:none">Who's Online</div>
+
 <!-- ════ CASES DRAWER ════ -->
 <div class="cases-drawer" id="casesDrawer">
   <div class="drawer-header">
@@ -1359,7 +1373,7 @@ body::before {
     <div class="case-section"><h3>Tasks, Stats, Token Usage</h3><div class="case-section-body" id="opsStatsAdmin"></div></div>
   </div>
 </div>
-<div class="online-panel" id="onlinePanel"><div class="online-head"><span>Who's Online</span><button class="case-close" title="Hide Who's Online" style="font-size:12px;padding:0 4px" onclick="hideOnlinePanel()">✕</button><span id="onlineCount">0</span></div><div class="online-body" id="onlineBody"><div class="online-meta">No active users.</div></div></div><button class="online-restore" id="onlineRestoreBtn" onclick="showOnlinePanel()">Who's Online</button>
+<!-- Who's Online moved into shared bottom toolbar -->
 <div class="account-panel" id="profilePanel">
   <div class="case-lab-head"><div class="case-lab-title">Analyst Profile</div><button class="case-close" onclick="closeProfile()">✕</button></div>
   <div class="case-section-body" id="profileBody"></div>
@@ -1374,6 +1388,10 @@ body::before {
 <script>
 const params = new URLSearchParams(location.search);
 const state = { sessionId: params.get('session_id') || 'demo', view: params.get('view') || 'analyst', activeSeverityFilter:'all', alertSearch:'', token: localStorage.getItem('spotterToken') || '', me:null };
+function isAuthenticated(){ return !!state.token && state.me?.authenticated === true && !state.me?.read_only; }
+function isAdmin(){ return isAuthenticated() && state.me?.account?.privilege_level === 'admin'; }
+function isCommanderRole(){ return isAuthenticated() && String(state.me?.account?.work_role || '').toLowerCase().includes('commander'); }
+function canUseCommanderView(){ return isAdmin() || isCommanderRole(); }
 let EVENTS = [];
 let CASES = [];
 let ASOM_LINES = [
@@ -1430,9 +1448,12 @@ async function refreshData() {
   ONLINE = await api('/api/presence/online').catch(()=>[]);
   document.getElementById('readOnlyBanner').style.display = state.me?.read_only ? 'flex' : 'none';
   document.querySelectorAll('.admin-only').forEach(el=>el.style.display = state.me?.account?.privilege_level === 'admin' ? '' : 'none');
-  document.querySelectorAll('.admin-btn').forEach(el=>el.title = state.me?.account?.privilege_level === 'admin' ? 'Admin controls' : 'Login with an admin account to use this');
+  document.querySelectorAll('.admin-btn').forEach(el=>el.title = isAdmin() ? 'Admin controls' : 'Login with an admin account to use this');
+  document.querySelectorAll('.commander-nav').forEach(el=>{ el.style.display = canUseCommanderView() ? '' : 'none'; el.title = canUseCommanderView() ? 'Commander controls' : 'Commander/admin privileges required'; });
+  if(!canUseCommanderView() && state.view !== 'analyst') state.view = 'analyst';
   updateCurrentUserBadge();
   renderOnline();
+  pollNotifications();
   FEED = EVENTS.map(ev => ({ time:ev.time, color:ev.sev==='crit'?'red':ev.sev==='high'?'amber':ev.sev==='medium'?'blue':'green', agent:ev.agent, text:ev.title, tag:ev.sevLabel }));
   const counts = {}; EVENTS.forEach(ev => counts[ev.agent] = (counts[ev.agent] || 0) + 1);
   AGENT_TABLE = Object.entries(counts).map(([agent,count]) => ({ agent, count, status:'active' }));
@@ -1449,8 +1470,12 @@ function filteredEventEntries() {
   });
 }
 
-function hideBottomBar(){ localStorage.setItem('spotterBottomHidden','1'); const bar=document.getElementById('analystBottomBar'), btn=document.getElementById('bottomRestoreBtn'); if(bar)bar.classList.add('hidden'); if(btn)btn.classList.add('visible'); }
-function showBottomBar(){ localStorage.setItem('spotterBottomHidden','0'); const bar=document.getElementById('analystBottomBar'), btn=document.getElementById('bottomRestoreBtn'); if(bar)bar.classList.remove('hidden'); if(btn)btn.classList.remove('visible'); }
+function hideBottomBar(){ localStorage.setItem('spotterBottomHidden','1');
+  document.querySelectorAll('.shared-bottom-bar,.analyst-bottom').forEach(el=>el.classList.add('hidden'));
+  const btn=document.getElementById('bottomRestoreBtn'); if(btn)btn.classList.add('visible'); }
+function showBottomBar(){ localStorage.setItem('spotterBottomHidden','0');
+  document.querySelectorAll('.shared-bottom-bar,.analyst-bottom').forEach(el=>el.classList.remove('hidden'));
+  const btn=document.getElementById('bottomRestoreBtn'); if(btn)btn.classList.remove('visible'); }
 function applyBottomBarPref(){ if(localStorage.getItem('spotterBottomHidden')==='1') hideBottomBar(); else showBottomBar(); }
 
 function updateCurrentUserBadge(){ const el=document.getElementById('currentUserBadge'); if(!el)return; const a=state.me?.account; el.textContent=a ? (a.formatted_name || personName(a).replace(/&amp;/g,'&')) : 'Login'; }
@@ -1516,7 +1541,14 @@ async function loadCaseDetail(caseId) {
   const main=document.getElementById('caseMain'), side=document.getElementById('caseSide');
   const five=c.five_ws||{};
   main.innerHTML = `<div class="case-section"><h3>${escapeHtml(c.id)} // ${escapeHtml(c.name)}</h3><div class="case-section-body"><div class="bluf">${escapeHtml(c.bluf || 'BLUF pending generation.')}</div></div></div>
-  <div class="case-section"><h3>5 Ws</h3><div class="case-section-body case-grid2">${['who','what','when','where','why'].map(k=>`<div class="detail-kv"><div class="detail-kv-key">${k}</div><div class="detail-kv-val">${escapeHtml(five[k]||'pending')}</div></div>`).join('')}</div></div>
+  <div class="case-section"><h3>5 Ws + How</h3><div class="case-section-body case-grid2">
+<div class="detail-kv"><div class="detail-kv-key">Who</div><div class="detail-kv-val">${escapeHtml(five.who||'Not yet determined')}</div></div>
+<div class="detail-kv"><div class="detail-kv-key">What</div><div class="detail-kv-val">${escapeHtml(five.what||'Not yet determined')}</div></div>
+<div class="detail-kv"><div class="detail-kv-key">When</div><div class="detail-kv-val">${escapeHtml(five.when||'Not yet determined')}</div></div>
+<div class="detail-kv"><div class="detail-kv-key">Where</div><div class="detail-kv-val">${escapeHtml(five.where||'Not yet determined')}</div></div>
+<div class="detail-kv"><div class="detail-kv-key">Why</div><div class="detail-kv-val">${escapeHtml(five.why||'Not yet determined')}</div></div>
+<div class="detail-kv"><div class="detail-kv-key">How</div><div class="detail-kv-val">${escapeHtml(c.how||five.how||'Not yet determined')}</div></div>
+</div></div>
   <div class="case-section"><h3>Technical Summary</h3><div class="case-section-body detail-text">${escapeHtml(c.technical_summary||c.summary||'Pending analyst validation.')}</div></div>
   <div class="case-section"><h3>Way Ahead</h3><div class="case-section-body detail-text">${escapeHtml(c.way_ahead||'Pending.')}</div></div>
   <div class="case-section"><h3>Timeline</h3><div class="case-section-body"><div class="timeline">${(c.timeline||[]).map(t=>`<div class="tl-item"><div class="tl-time">${escapeHtml(compactTime(t.event_time||t.created_at))} · ${escapeHtml(t.entry_type)} · ${escapeHtml(t.actor_name||'system')}</div><div class="tl-title">${escapeHtml(t.title)}</div><div class="tl-body">${escapeHtml(t.body||'')}</div></div>`).join('')||'<div class="tl-body">No timeline entries.</div>'}</div></div></div>
@@ -1533,7 +1565,53 @@ async function addTimelineToCase(){ if(!SELECTED_CASE)return; await api(`/api/ca
 async function finalizeCase(){ if(!SELECTED_CASE)return; await api(`/api/cases/${SELECTED_CASE.id}/finalize`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); await loadCaseDetail(SELECTED_CASE.id); }
 async function showIndicatorRelations(ev, enc) { const val=decodeURIComponent(enc); const d=await api('/api/indicators/'+encodeURIComponent(val)+'/related').catch(()=>({cases:[],events:[]})); const pop=document.getElementById('relationPop'); pop.style.left=(ev.clientX+12)+'px'; pop.style.top=(ev.clientY+12)+'px'; pop.style.display='block'; pop.innerHTML=`<b>${escapeHtml(val)}</b><br><br>Cases:<br>${(d.cases||[]).map(c=>`${escapeHtml(c.case_id)} // ${escapeHtml(c.name)}`).join('<br>')||'none'}<br><br>Events:<br>${(d.events||[]).map(e=>`${escapeHtml(e.event_id)} // ${escapeHtml(e.title)}`).join('<br>')||'none'}`; }
 function hideIndicatorRelations(){ document.getElementById('relationPop').style.display='none'; }
-async function openAccounts(){ if(!state.token){ openLogin(); return; } await refreshData(); if(state.me?.account?.privilege_level !== 'admin'){ alert('Admin privileges required. Log in with an admin account.'); return; } document.getElementById('accountPanel').classList.add('open'); await renderAccounts(); }
+async function openAccounts(){
+  if(!state.token){ openLogin(); return; }
+  await refreshData();
+  const canEdit = isAdmin() || (isAuthenticated() && state.me?.account);
+  if(!canEdit){ openLogin(); return; }
+  if(isAdmin()){
+    document.getElementById('accountPanel').classList.add('open');
+    await renderAccounts();
+  } else {
+    // Non-admin: open self-edit only
+    document.getElementById('accountPanel').classList.add('open');
+    renderAccountSelfEdit();
+  }
+}
+function renderAccountSelfEdit(){
+  if(!state.me?.account)return;
+  const a=state.me.account;
+  document.getElementById('accountForm').innerHTML=
+    `<div style="padding:14px;font-family:var(--mono);font-size:11px;color:var(--amber)">EDIT YOUR PROFILE</div>`+
+    accountFormHtml('self', false);
+  // Fill current values
+  setTimeout(()=>{
+    const fields={First:a.first_name,Last:a.last_name,Name:a.display_name,User:a.username,Email:a.email,Phone:a.phone,
+      Role:a.work_role,Branch:a.service_branch,Rank:a.rank,Skill:a.skill_level,TeamId:a.team_id,Years:a.years_experience,
+      Certs:a.certs,Degrees:a.degrees,Contact:a.contact,Bio:a.bio};
+    Object.entries(fields).forEach(([k,v])=>{const el=document.getElementById('self'+k); if(el) el.value=v||'';});
+    updateRankOptionsFor('self');
+    // Make branch/rank selectors not trigger branch reload for non-admins
+    const selfPriv=document.getElementById('selfPriv');
+    if(selfPriv){ selfPriv.innerHTML='<option value="analyst">analyst (cannot change privilege)</option>'; selfPriv.disabled=true; }
+  }, 50);
+  // Override save for self-edit
+  window._selfEditActive=true;
+  window._saveSelf=async function(){
+    if(!state.me?.account)return;
+    const payload=readAccountPayload('self', false);
+    payload.privilege_level='analyst';
+    payload.team = (document.getElementById('selfTeamId')?.options[document.getElementById('selfTeamId')?.selectedIndex]?.textContent)||'';
+    const result=await api('/api/accounts/self-edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,token:state.token})});
+    alert(result ? 'Profile updated. You may need to refresh.' : 'Saved.');
+    await refreshData(); state.me = await api('/api/auth/me?token='+encodeURIComponent(state.token)).catch(()=>({read_only:true}));
+    updateCurrentUserBadge(); renderOnline();
+  };
+  document.getElementById('accountList').innerHTML='<div style="display:none"></div>';
+  document.getElementById('teamForm').innerHTML='<div style="display:none"></div>';
+  document.getElementById('teamList').innerHTML='<div style="display:none"></div>';
+}
 function closeAccounts(){ document.getElementById('accountPanel').classList.remove('open'); }
 function opts(arr, selected=''){ return (arr||[]).map(x=>`<option value="${escapeHtml(x)}" ${x===selected?'selected':''}>${escapeHtml(x)}</option>`).join(''); }
 function personName(a){ return escapeHtml(a.formatted_name || [a.rank, a.last_name, a.first_name].filter(Boolean).join(' ') || a.display_name || a.username || 'Analyst'); }
@@ -1547,6 +1625,13 @@ function toggleOnline(){ onlineCollapsed() ? showOnlinePanel() : hideOnlinePanel
 function applyOnlineCollapsed(){ onlineCollapsed() ? hideOnlinePanel() : showOnlinePanel(); }
 async function openProfile(id){ const p=await api('/api/accounts/'+encodeURIComponent(id)+'?token='+encodeURIComponent(state.token)).catch(e=>({error:e.message})); const panel=document.getElementById('profilePanel'), body=document.getElementById('profileBody'); panel.classList.add('open'); if(p.error){ body.innerHTML=`<div class="tl-body">${escapeHtml(p.error)}</div>`; return; } body.innerHTML=`<div class="case-section"><h3>${personName(p)}</h3><div class="case-section-body"><div class="detail-kv-grid"><div class="detail-kv"><div class="detail-kv-key">Privilege</div><div class="detail-kv-val">${escapeHtml(p.privilege_level||'')}</div></div><div class="detail-kv"><div class="detail-kv-key">Role</div><div class="detail-kv-val">${escapeHtml(p.work_role||'')}</div></div><div class="detail-kv"><div class="detail-kv-key">Skill</div><div class="detail-kv-val">${escapeHtml(p.skill_level||'')}</div></div><div class="detail-kv"><div class="detail-kv-key">Team</div><div class="detail-kv-val">${teamLinkFromAccount(p)}</div></div><div class="detail-kv"><div class="detail-kv-key">Certs</div><div class="detail-kv-val">${escapeHtml(p.certs||'')}</div></div><div class="detail-kv"><div class="detail-kv-key">Degrees</div><div class="detail-kv-val">${escapeHtml(p.degrees||'')}</div></div><div class="detail-kv"><div class="detail-kv-key">Experience</div><div class="detail-kv-val">${escapeHtml(p.years_experience||0)} years</div></div></div><br><div class="detail-section-label">Bio</div><div class="detail-text">${escapeHtml(p.bio||'')}</div></div></div><div class="case-section"><h3>Cases</h3><div class="case-section-body">${(p.cases||[]).map(c=>`<div class="profile-card"><b>${escapeHtml(c.case_id)}</b><br>${escapeHtml(c.name)}<br><span class="tl-time">${escapeHtml(c.status)} · ${escapeHtml(c.role||'')}</span></div>`).join('')||'<div class="tl-body">No cases linked.</div>'}</div></div>`; }
 function closeProfile(){ document.getElementById('profilePanel').classList.remove('open'); }
+function toggleOnlineToolbar(){ const p=document.getElementById('onlineToolbarPanel'); const n=document.getElementById('notifToolbarPanel'); if(n)n.style.display='none'; p.style.display=p.style.display==='none'?'block':'none'; }
+function toggleNotificationsToolbar(){ const p=document.getElementById('notifToolbarPanel'); const o=document.getElementById('onlineToolbarPanel'); if(o)o.style.display='none'; p.style.display=p.style.display==='none'?'block':'none'; loadNotifications(); }
+async function loadNotifications(){ const box=document.getElementById('notifToolbarBody'); if(!box)return; const d=await api('/api/notifications?token='+encodeURIComponent(state.token)).catch(()=>{data:[]});
+  const notifs=(d.data||d||[]); if(!notifs.length){box.innerHTML='<div style="color:var(--text-muted);padding:8px;font-family:var(--mono);font-size:10px">No notifications.</div>';return;}
+  box.innerHTML=notifs.slice(0,10).map(n=>`<div class="notif-item ${n.read_at?'':'unread'}"><div class="notif-time">${escapeHtml(n.n_type)} · ${compactTime(n.created_at)}${n.sender_name?' · '+escapeHtml(n.sender_name):''}</div><div class="notif-body-text">${escapeHtml(n.body||'')}${n.case_id?'<br><span style="color:var(--blue);cursor:pointer" onclick="openCaseLab(\''+escapeHtml(n.case_id)+'\')\')\')\')\')\')\')">View case \''+escapeHtml(n.case_id)+'\' </span>':''}</div></div>`).join('');
+}
+async function pollNotifications(){ try{ const d=await api('/api/notifications/unread-count?token='+encodeURIComponent(state.token)).catch(()=>({count:0})); const badge=document.getElementById('notifBadge'); if(badge){ const c=d.data?.count??d.count||0; if(c>0){badge.textContent=String(Math.min(c,99)); badge.style.display='';} else badge.style.display='none'; }}catch(e){}}
 async function openTeamProfile(id){ const t=await api('/api/teams/'+encodeURIComponent(id)).catch(e=>({error:e.message})); const panel=document.getElementById('profilePanel'), body=document.getElementById('profileBody'); panel.classList.add('open'); if(t.error){ body.innerHTML=`<div class="tl-body">${escapeHtml(t.error)}</div>`; return; } body.innerHTML=`<div class="case-section"><h3>${teamLabel(t)}</h3><div class="case-section-body"><div class="detail-kv-grid"><div class="detail-kv"><div class="detail-kv-key">Type</div><div class="detail-kv-val">${escapeHtml(t.team_type||'')}</div></div><div class="detail-kv"><div class="detail-kv-key">Number</div><div class="detail-kv-val">${escapeHtml(t.number||'')}</div></div><div class="detail-kv"><div class="detail-kv-key">Location</div><div class="detail-kv-val">${escapeHtml(t.location||'')}</div></div><div class="detail-kv"><div class="detail-kv-key">Phone</div><div class="detail-kv-val">${escapeHtml(t.phone||'')}</div></div><div class="detail-kv"><div class="detail-kv-key">Email</div><div class="detail-kv-val">${escapeHtml(t.email||'')}</div></div></div><br><div class="detail-section-label">Mission / Notes</div><div class="detail-text">${escapeHtml(t.notes||t.description||'')}</div></div></div><div class="case-section"><h3>Members</h3><div class="case-section-body">${(t.members||[]).map(a=>`<div class="profile-card"><b onclick="openProfile('${a.id}')" style="cursor:pointer">${personName(a)}</b><br><span class="tl-time">${escapeHtml(a.skill_level||'')} ${escapeHtml(a.work_role||'')}</span></div>`).join('')||'<div class="tl-body">No members.</div>'}</div></div>`; }
 function teamLinkFromAccount(a){ const label=accountTeamLabel(a); const id=a.team_id; return id ? `<span onclick="event.stopPropagation();openTeamProfile('${id}')" style="cursor:pointer;color:var(--blue)">${label}</span>` : label; }
 
@@ -1569,7 +1654,10 @@ async function renderAccounts(){
   renderTeamAdmin();
 }
 function updateRankOptions(){ updateRankOptionsFor('acct'); }
-async function saveAccount(){ const payload=readAccountPayload('acct', true); await api('/api/accounts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); await refreshData(); await renderAccounts(); renderCommander(); }
+async function saveAccount(){
+  if(window._selfEditActive && window._saveSelf){ window._saveSelf(); return; }
+  const payload=readAccountPayload('acct', true); await api('/api/accounts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); await refreshData(); await renderAccounts(); renderCommander();
+}
 function acctSelect(id){ return `<select id="${id}"><option value="">Unassigned</option>${ACCOUNTS.map(a=>`<option value="${a.id}">${personName(a)}</option>`).join('')}</select>`; }
 function renderTeamAdmin(){
   document.getElementById('teamForm').innerHTML=`<select id="teamType"><option>CPT</option><option>NCPT</option></select><input id="teamNumber" placeholder="Team Number"><input id="teamName" placeholder="Team Name"><input id="teamLogo" placeholder="Picture / Logo URL"><input id="teamLocation" placeholder="Location"><input id="teamPhone" placeholder="Phone Number"><input id="teamEmail" placeholder="Email"><textarea id="teamDesc" placeholder="Description"></textarea><textarea id="teamNotes" placeholder="Notes / mission / coverage / anything pertinent"></textarea><label>Team Lead</label>${acctSelect('teamLead')}<input id="teamLeadText" placeholder="Manual Team Lead name if not in accounts"><label>Deputy Team Lead</label>${acctSelect('teamDeputy')}<input id="teamDeputyText" placeholder="Manual Deputy TL name"><label>Planner</label>${acctSelect('teamPlanner')}<input id="teamPlannerText" placeholder="Manual Planner name"><label>NCOIC</label>${acctSelect('teamNcoic')}<input id="teamNcoicText" placeholder="Manual NCOIC name"><button class="btn btn-escalate" onclick="saveTeam()">Save Team</button>`;
@@ -1578,7 +1666,12 @@ function renderTeamAdmin(){
 async function saveTeam(){ const payload={token:state.token, team_type:teamType.value, number:teamNumber.value, name:teamName.value, logo_url:teamLogo.value, location:teamLocation.value, phone:teamPhone.value, email:teamEmail.value, description:teamDesc.value, notes:teamNotes.value, team_lead_id:teamLead.value, deputy_team_lead_id:teamDeputy.value, planner_id:teamPlanner.value, ncoic_id:teamNcoic.value, team_lead_text:teamLeadText.value, deputy_team_lead_text:teamDeputyText.value, planner_text:teamPlannerText.value, ncoic_text:teamNcoicText.value}; await api('/api/teams',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); await refreshData(); await renderAccounts(); }
 async function viewTeam(id){ const t=await api('/api/teams/'+encodeURIComponent(id)); document.getElementById('teamList').innerHTML=`<div class="profile-card">${t.logo_url?`<img class="team-logo" src="${escapeHtml(t.logo_url)}">`:''}<b>${teamLabel(t)}</b><br>${escapeHtml(t.location||'')} · ${escapeHtml(t.phone||'')}<br>${escapeHtml(t.description||'')}</div><h3>Members</h3>${(t.members||[]).map(a=>`<div class="profile-card"><b onclick="openProfile('${a.id}')" style="cursor:pointer">${personName(a)}</b><br><span class="tl-time">${escapeHtml(a.work_role)} · ${escapeHtml(a.skill_level)}</span></div>`).join('')||'<div class="tl-body">No members.</div>'}<button class="btn btn-expand" onclick="renderTeamAdmin()">Back To Teams</button>`; }
 
-function renderOnline(){ const b=document.getElementById('onlineBody'), c=document.getElementById('onlineCount'); if(!b)return; if(c)c.textContent=String(ONLINE.length); b.innerHTML=ONLINE.length?ONLINE.map(a=>`<div class="online-row"><span class="online-dot"></span><div><div class="online-name" onclick="openProfile('${a.id}')" style="cursor:pointer">${personName(a)}</div><div class="online-meta">${escapeHtml(a.skill_level||'')} ${escapeHtml(a.work_role||'')} - ${teamLinkFromAccount(a)}</div></div></div>`).join(''):'<div class="online-meta">No active users.</div>'; }
+function renderOnline(){
+  const b=document.getElementById('onlineBody'); if(b)b.innerHTML=ONLINE.length?ONLINE.map(a=>`<div class="online-row"><span class="online-dot"></span><div><div class="online-name" onclick="openProfile('${a.id}')" style="cursor:pointer">${personName(a)}</div><div class="online-meta">${escapeHtml(a.skill_level||'')} ${escapeHtml(a.work_role||'')} - ${teamLinkFromAccount(a)}</div></div></div>`).join(''):'<div class="online-meta">No active users.</div>';
+  const c=document.getElementById('onlineCount'); if(c)c.textContent=String(ONLINE.length);
+  const tc=document.getElementById('toolbarOnlineCount'); if(tc)tc.textContent=String(ONLINE.length);
+  const tb=document.getElementById('onlineToolbarBody'); if(tb)tb.innerHTML=ONLINE.length?ONLINE.map(a=>`<div class="online-row"><span class="online-dot" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green)"></span><div><div class="online-name" onclick="openProfile('${a.id}')" style="cursor:pointer">${personName(a)}</div><div style="font-size:9px;color:var(--text-muted)">${escapeHtml(a.work_role||'')} - ${teamLinkFromAccount(a)}</div></div></div>`).join(''):'<div style="color:var(--text-muted);padding:8px;font-family:var(--mono);font-size:10px">No active users.</div>';
+}
 async function openOpsAdmin(){ if(!state.token){ openLogin(); return; } await refreshData(); if(state.me?.account?.privilege_level !== 'admin'){ alert('Admin privileges required. Log in with an admin account.'); return; } document.getElementById('opsAdminPanel').classList.add('open'); await loadOpsConfig(); }
 function closeOpsAdmin(){ document.getElementById('opsAdminPanel').classList.remove('open'); }
 async function loadOpsConfig(){ OPS_CONFIG=await api('/api/setup/config').catch(()=>OPS_CONFIG); const t=document.getElementById('opsTwofa'), k=document.getElementById('opsKibanaUrl'); if(t)t.value=String(!!OPS_CONFIG.security?.twofa_required); if(k)k.value=OPS_CONFIG.kibana?.url||''; await Promise.all([renderEnrichAdmin(), renderAgentAdmin(), renderAdminOverview()]); }
@@ -1599,9 +1692,14 @@ async function requestLogin(){ const d=await api('/api/auth/login',{method:'POST
 async function verifyLogin(id){ const d=await api('/api/auth/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({challenge_id:id,code:loginCode.value})}); state.token=d.token; localStorage.setItem('spotterToken', d.token); closeLogin(); await refreshData(); renderEvents(); renderDrawer(); renderCommander(); }
 function openChat(){ document.getElementById('chatPanel').classList.add('open'); document.getElementById('chatTitle').textContent=(state.view==='commander'?'Commander':'Analyst')+' Chatbot'; }
 function closeChat(){ document.getElementById('chatPanel').classList.remove('open'); }
-async function sendChat(){ const msg=chatInput.value; if(!msg)return; chatLog.innerHTML+=`<div class="chat-msg"><b>You:</b> ${escapeHtml(msg)}</div>`; chatInput.value=''; const d=await api('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role:state.view,message:msg,token:state.token})}); chatLog.innerHTML+=`<div class="chat-msg"><b>Spotter-Shooter:</b><br>${escapeHtml(d.answer)}</div>`; chatLog.scrollTop=chatLog.scrollHeight; }
+async function sendChat(){ const msg=chatInput.value.trim(); if(!msg)return; chatLog.innerHTML+=`<div class="chat-msg"><b>You:</b> ${escapeHtml(msg)}</div>`; chatInput.value='';
+  const d=await api('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role:state.view,message:msg,token:state.token})});
+  const model=d.model?'<div style="font-size:9px;color:var(--text-muted);margin-top:4px">Model: '+escapeHtml(d.model)+'</div>':'';
+  chatLog.innerHTML+=`<div class="chat-msg"><b>Spotter-Shooter:</b><br>${escapeHtml(d.answer)}${model}</div>`;
+  chatLog.scrollTop=chatLog.scrollHeight; }
 async function goToKibana(){ const d=await api('/api/setup/kibana'); if(!d.url){ alert('Kibana URL is not configured. Admin Tools → set Kibana URL.'); return; } window.open(d.url,'_blank'); }
 function renderCommander() {
+  if(!canUseCommanderView()) return;
   renderStats();
   document.getElementById('asomList').innerHTML = CASES.map(c => `<div class="asom-line-row" onclick="openCaseLab('${escapeHtml(c.id)}')"><div class="asom-num">${escapeHtml(c.id)}</div><div class="asom-text">${escapeHtml(c.name)}</div><span class="asom-status ${c.status==='open'?'active':c.status==='closed'?'done':'pending'}">${escapeHtml(c.status)}</span></div>`).join('') || '<div class="asom-line-row"><div class="asom-text">No cases yet.</div></div>';
   document.getElementById('asomCountLabel').textContent = `${CASES.filter(c=>c.status==='closed').length} / ${CASES.length} closed`;
@@ -1612,6 +1710,8 @@ function renderCommander() {
   document.getElementById('cmdTimestamp').textContent = new Date().toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second:'2-digit' }) + ' UTC';
 }
 function switchView(role) {
+  if(role !== 'analyst' && !canUseCommanderView()){ role = 'analyst'; }
+  state.view = role;
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById(role === 'analyst' ? 'analystView' : 'commanderView').classList.add('active');
   document.getElementById('analystBtn').classList.toggle('active', role === 'analyst');
@@ -1619,6 +1719,7 @@ function switchView(role) {
   document.getElementById('commanderBtn').classList.toggle('commander-role', role === 'commander');
 }
 async function init() {
+  if(location.pathname !== '/operations.html') history.replaceState(null, '', `/operations.html${location.search || ''}`);
   applyOnlineCollapsed();
   applyBottomBarPref();
   await refreshData();
