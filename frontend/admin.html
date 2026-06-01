@@ -97,6 +97,28 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:1
     <button class="tab-btn" onclick="switchTab('settings')">Settings</button>
   </div>
   
+    
+  <!-- Search Tab -->
+  <div class="tab-content active" id="tab-search">
+    <div class="admin-section">
+      <div class="admin-card">
+        <h3>Full Text Search</h3>
+        <div class="admin-card-body">
+          <div style="display:flex;gap:8px;margin-bottom:16px">
+            <input id="searchQuery" placeholder="Search cases, timeline, indicators, accounts, teams, Elastic..." 
+                   style="flex:1;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:13px;border-radius:2px"
+                   onkeydown="if(event.key==='Enter')doSearch()">
+            <button class="btn btn-success" onclick="doSearch()">Search</button>
+            <button class="btn" onclick="clearSearch()" style="font-size:10px;padding:5px 12px">Clear</button>
+          </div>
+          <div id="searchResults" style="font-family:var(--mono)">
+            <div style="color:var(--text-muted);padding:20px;text-align:center;font-size:12px">Enter a search term to find matches across cases, timeline entries, indicators, accounts, teams, and Elastic.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
   <!-- Accounts Tab -->
   <div class="tab-content active" id="tab-accounts">
     <div class="admin-section">
@@ -284,6 +306,96 @@ async function api(path, opts={}){
   return body.data;
 }
 
+
+// ============ SEARCH ============
+async function doSearch(){
+  const q = document.getElementById('searchQuery').value.trim();
+  if(q.length < 2) return;
+  const results = document.getElementById('searchResults');
+  results.innerHTML = '<div style="color:var(--text-dim);padding:20px;text-align:center">Searching...</div>';
+  try{
+    const d = await api('/api/search?q='+encodeURIComponent(q)+'&limit=50&token='+encodeURIComponent(state.token)).catch(()=>null);
+    if(!d){results.innerHTML='<div class="empty-msg">Search failed</div>';return;}
+    renderSearchResults(d, q);
+  }catch(e){
+    results.innerHTML = '<div class="empty-msg">Search failed: '+escapeHtml(e.message)+'</div>';
+  }
+}
+function clearSearch(){
+  document.getElementById('searchQuery').value='';
+  document.getElementById('searchResults').innerHTML = '<div style="color:var(--text-muted);padding:20px;text-align:center;font-size:12px">Enter a search term to find matches across cases, timeline entries, indicators, accounts, teams, and Elastic.</div>';
+}
+function renderSearchResults(d, q){
+  var counts = d.type_counts||{};
+  var elasticCount = (d.elastic_matches||[]).length;
+  var summaryHTML = '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">';
+  var typeLabels = {case:['Cases','var(--amber)'],timeline:['Timeline','var(--blue)'],indicator:['Indicators','var(--purple)'],account:['Accounts','var(--green)'],team:['Teams','var(--red)']};
+  for(var t in counts){
+    var [label,color] = typeLabels[t]||[t,'var(--text)'];
+    summaryHTML += '<span style="background:var(--surface2);padding:4px 12px;border-radius:2px;font-size:11px;color:'+color+'">'+label+': '+counts[t]+'</span>';
+  }
+  summaryHTML += '</div>';
+  if(elasticCount > 0) summaryHTML += '<div style="margin-bottom:12px;font-size:11px;color:var(--green)">Elastic: '+elasticCount+' raw log matches</div>';
+  var groups = {};
+  (d.results||[]).forEach(function(r){ groups[r.type] = groups[r.type] || []; groups[r.type].push(r); });
+  var resultsHTML = summaryHTML;
+  for(var type in groups){
+    var items = groups[type];
+    var lbl = typeLabels[type]||[type,'var(--border)'];
+    var borderColor = lbl[1];
+    var label = lbl[0];
+    resultsHTML += '<div style="margin-bottom:16px">';
+    resultsHTML += '<div style="font-family:var(--display);font-size:12px;color:var(--text-dim);letter-spacing:.1em;text-transform:uppercase;padding:6px 0;border-bottom:1px solid '+borderColor+';margin-bottom:8px">'+label+' ('+items.length+')</div>';
+    items.forEach(function(item){
+      resultsHTML += '<div style="padding:8px 12px;border:1px solid var(--border);border-radius:2px;margin-bottom:6px;background:var(--surface2)">';
+      resultsHTML += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
+      resultsHTML += '<span style="font-weight:700;color:'+borderColor+'">'+escapeHtml(item.entity.name||item.entity.title||item.entity.value||item.entity.display_name||item.id)+'</span>';
+      resultsHTML += '<span style="font-size:9px;color:var(--text-muted)">score: '+item.score+'</span>';
+      resultsHTML += '</div>';
+      var e = item.entity;
+      var detail = '';
+      if(type === 'case'){
+        detail = '<span style="font-size:10px;color:var(--text-muted);margin-right:12px">'+escapeHtml(e.status||'')+'</span>';
+        if(e.how) detail += '<span style="font-size:10px;color:var(--text-muted);margin-right:12px">How: '+escapeHtml(e.how||'')+'</span>';
+        if(e.bluf) detail += '<div style="font-size:11px;margin-top:4px;color:var(--text-dim)">'+escapeHtml(e.bluf)+'</div>';
+      } else if(type === 'timeline'){
+        detail = '<span style="font-size:10px;color:var(--amber);margin-right:8px">'+escapeHtml(e.entry_type)+'</span>';
+        if(e.actor) detail += '<span style="font-size:10px;color:var(--text-muted);margin-right:8px">by '+escapeHtml(e.actor)+'</span>';
+        if(e.event_time) detail += '<span style="font-size:10px;color:var(--text-muted);margin-right:8px">'+escapeHtml(e.event_time)+'</span>';
+        if(e.case_id) detail += ' Case: <a style="cursor:pointer;color:var(--blue)">'+escapeHtml(e.case_id)+'</a>';
+        if(e.body) detail += '<div style="font-size:11px;margin-top:4px;color:var(--text-dim)">'+escapeHtml(e.body)+'</div>';
+      } else if(type === 'indicator'){
+        detail = '<span style="font-size:10px;color:var(--purple);margin-right:8px">'+escapeHtml(e.indicator_type)+'</span>';
+        if(e.value) detail += '<span style="font-size:10px;color:var(--blue);margin-right:12px">'+escapeHtml(e.value)+'</span>';
+        if(e.case_id) detail += ' Case: <a style="cursor:pointer;color:var(--blue)">'+escapeHtml(e.case_id)+'</a>';
+        if(e.description) detail += '<div style="font-size:11px;margin-top:4px;color:var(--text-dim)">'+escapeHtml(e.description)+'</div>';
+      } else if(type === 'account'){
+        var teamInfo = e.team ? ((e.team.number||'') + ' ' + ((e.team.type==='NCPT')?'NCPT':'CPT')).trim() : 'No Team';
+        detail = '<span style="font-size:10px;color:var(--text-muted);margin-right:12px">'+escapeHtml(e.rank)+' '+escapeHtml(e.work_role)+' '+escapeHtml(e.skill_level)+' '+escapeHtml(teamInfo)+'</span>';
+        if(e.email) detail += '<span style="font-size:10px;color:var(--text-muted);margin-right:8px">'+escapeHtml(e.email)+'</span>';
+        if(e.bio) detail += '<div style="font-size:11px;margin-top:4px;color:var(--text-dim)">'+escapeHtml(e.bio)+'</div>';
+      } else if(type === 'team'){
+        detail = '<span style="font-size:10px;color:var(--text-muted);margin-right:8px">'+escapeHtml(e.location||'')+'</span>';
+        if(e.description) detail += '<div style="font-size:11px;margin-top:4px;color:var(--text-dim)">'+escapeHtml(e.description)+'</div>';
+        if(e.notes) detail += '<div style="font-size:11px;margin-top:4px;color:var(--text-dim);font-style:italic">'+escapeHtml(e.notes)+'</div>';
+      }
+      resultsHTML += detail + '</div>';
+    });
+    resultsHTML += '</div>';
+  }
+  if(elasticCount > 0){
+    resultsHTML += '<div style="margin-bottom:16px"><div style="font-family:var(--display);font-size:12px;color:var(--green);letter-spacing:.1em;text-transform:uppercase;padding:6px 0;border-bottom:1px solid var(--green);margin-bottom:8px">Elastic Raw Logs ('+elasticCount+')</div>';
+    (d.elastic_matches||[]).forEach(function(m){
+      resultsHTML += '<div style="padding:8px 12px;border:1px solid rgba(76,175,111,.2);border-radius:2px;margin-bottom:6px;background:rgba(76,175,111,.03)"><span style="font-size:9px;color:var(--text-muted);margin-right:8px">'+escapeHtml(m.index)+'</span><span style="font-size:9px;color:var(--text-muted);margin-right:8px">'+escapeHtml(m.id)+'</span><span style="font-size:9px;color:var(--text-muted)">score: '+m.score+'</span><div style="font-size:11px;margin-top:4px;color:var(--text-dim);word-break:break-all">'+escapeHtml(m.sample)+'</div></div>';
+    });
+    resultsHTML += '</div>';
+  }
+  if(Object.keys(groups).length===0 && !elasticCount){
+    resultsHTML += '<div style="color:var(--text-muted);padding:20px;text-align:center;font-size:12px">No results for "'+escapeHtml(q)+'"</div>';
+  }
+  document.getElementById('searchResults').innerHTML = resultsHTML;
+}
+
 // ═══ INIT ═══
 async function init(){
   try{
@@ -312,9 +424,13 @@ function escapeHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'
 // ═══ TABS ═══
 function switchTab(name){
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
-  document.getElementById('tab-'+name)?.classList.add('active');
-  event.target.classList.add('active');
+  document.querySelectorAll('.tab-content').forEach(t=>{t.style.display='none';});
+  const el = document.getElementById('tab-'+name);
+  if(el) el.style.display = '';
+  const labels = {search:'Search',accounts:'Accounts',teams:'Teams',audit:'Audit Trail',pwreset:'Password Reset',agents:'Agent Management',settings:'Settings'};
+  document.querySelectorAll('.tab-btn').forEach(b=>{
+    if(b.textContent.trim() === labels[name]) b.classList.add('active');
+  });
   if(name==='audit') loadAuditTrail();
   if(name==='agents') loadAgentCycle();
 }

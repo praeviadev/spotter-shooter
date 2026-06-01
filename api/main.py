@@ -1565,6 +1565,177 @@ async def ws(ws: WebSocket, session_id: str):
         pass
 
 # ═══════════════════════════════════════════════════════════
+# FULL TEXT SEARCH
+# ═══════════════════════════════════════════════════════════
+@app.get("/api/search")
+async def full_text_search(q: str = "", limit: int = 30, token: str = ""):
+    """Search across cases, timeline, indicators, accounts, teams."""
+    if not q or len(q.strip()) < 2:
+        return E({"results": [], "query": q, "total": 0})
+    q = q.strip()
+    p = await P()
+    actor = await get_actor(p, token)
+    is_admin = actor.get("privilege_level") == "admin"
+
+    results = []
+    like_pattern = f"%{q}%"
+    
+    def add_result(rtype, eid, score, entity, fields):
+        results.append({"type": rtype, "id": eid, "score": score, "entity": entity, **fields})
+
+    # Cases - name, bluf, technical_summary, way_ahead, five_ws, how
+    case_rows = await p.fetch("""
+        SELECT id, case_id, name, bluf, technical_summary, way_ahead, five_ws, how, status
+        FROM cases
+        WHERE name ILIKE $1 OR bluf ILIKE $1 OR technical_summary ILIKE $1 OR way_ahead ILIKE $1
+           OR five_ws::text ILIKE $1 OR how ILIKE $1
+        ORDER BY updated_at DESC LIMIT $2
+    """, like_pattern, limit)
+    for r in case_rows:
+        score = 0
+        for col in ("name", "bluf", "technical_summary", "way_ahead"):
+            v = r[col] or ""
+            if q.lower() in v.lower(): score += 3
+        for col in ("five_ws", "how"):
+            v = r[col] or ""
+            if q.lower() in v.lower(): score += 1
+        five = _jsonish(r["five_ws"]) or {}
+        add_result("case", r["case_id"], score, {
+            "name": r["name"], "status": r["status"],
+            "bluf": (r["bluf"] or "")[:200],
+            "five_ws": {"who": five.get("who",""), "what": five.get("what",""), "when": five.get("when",""),
+                         "where": five.get("where",""), "why": five.get("why","")},
+            "how": r.get("how","") or "",
+            "technical_summary": (r["technical_summary"] or "")[:200],
+        })
+
+    # Timeline entries
+    tl_rows = await p.fetch("""
+        SELECT ct.id, ct.case_id, ct.event_time, ct.entry_type, ct.title, ct.body, ct.actor_name, c.case_id as case_ref
+        FROM case_timeline ct
+        LEFT JOIN cases c ON c.id = ct.case_id
+        WHERE ct.title ILIKE $1 OR ct.body ILIKE $1
+        ORDER BY ct.created_at DESC LIMIT $2
+    """, like_pattern, limit)
+    for r in tl_rows:
+        score = 3 if q.lower() in (r["title"] or "").lower() else 1
+        add_result("timeline", str(r["id"]), score, {
+            "case_id": r["case_ref"], "entry_type": r["entry_type"],
+            "title": r["title"], "body": (r["body"] or "")[:300],
+            "actor": r.get("actor_name",""), "event_time": ser(r["event_time"]),
+        })
+
+    # Indicators
+    ind_rows = await p.fetch("""
+        SELECT ci.id, ci.case_id, ci.indicator_type, ci.value, ci.description, c.case_id as case_ref
+        FROM case_indicators ci
+        LEFT JOIN cases c ON c.id = ci.case_id
+        WHERE ci.value ILIKE $1 OR ci.description ILIKE $1 OR ci.indicator_type ILIKE $1
+        ORDER BY ci.created_at DESC LIMIT $2
+    """, like_pattern, limit)
+    for r in ind_rows:
+        score = 5 if q.lower() in (r["value"] or "").lower() else 1
+        add_result("indicator", str(r["id"]), score, {
+            "case_id": r["case_ref"], "indicator_type": r["indicator_type"],
+            "value": r["value"], "description": (r["description"] or "")[:200],
+        })
+
+    # Accounts (admin only)
+    if is_admin:
+        acc_rows = await p.fetch("""
+            SELECT a.id, a.username, a.display_name, a.rank, a.service_branch, a.work_role,
+                   a.skill_level, a.bio, a.certs, a.degrees,
+                   t.name as team_name, t.team_type, t.number as team_number
+            FROM accounts a
+            LEFT JOIN teams t ON t.id = a.team_id
+            WHERE a.username ILIKE $1 OR a.display_name ILIKE $1 OR a.rank ILIKE $1
+               OR a.work_role ILIKE $1 OR a.bio ILIKE $1 OR a.certs ILIKE $1
+               OR a.email ILIKE $1 OR a.phone ILIKE $1
+            ORDER BY a.display_name LIMIT $2
+        """, like_pattern, limit)
+        for r in acc_rows:
+            score = 3
+            for col in ("username", "display_name", "rank", "work_role", "bio", "certs"):
+                if q.lower() in (r[col] or "").lower(): score += 1
+            td = team_display(r) or ""
+            add_result("account", str(r["id"]), score, {
+                "username": r["username"], "display_name": r["display_name"],
+                "rank": r["rank"], "work_role": r["work_role"],
+                "skill_level": r["skill_level"], "branch": r["service_branch"],
+                "email": r.get("email",""), "phone": r.get("phone",""),
+                "team": {"name": r.get("team_name",""), "type": r.get("team_type",""),
+                         "number": r.get("team_number",""), "display": td},
+                "bio": (r.get("bio","") or "")[:200],
+                "certs": r.get("certs","") or "",
+            })
+
+        # Teams (admin only)
+        team_rows = await p.fetch("""
+            SELECT id, team_type, number, name, description, logo_url, location, phone, email, notes
+            FROM teams
+            WHERE name ILIKE $1 OR description ILIKE $1 OR location ILIKE $1
+               OR notes ILIKE $1 OR number::text ILIKE $1 OR email ILIKE $1
+            ORDER BY number LIMIT $2
+        """, like_pattern, limit)
+        for r in team_rows:
+            score = 5 if (r["number"] and str(r["number"]) == q.strip()) else (3 if q.lower() in (r["name"] or "").lower() else 1)
+            td = team_display(r)
+            add_result("team", str(r["id"]), score, {
+                "type": r["team_type"], "number": r.get("number",""),
+                "name": td, "raw_name": r["name"],
+                "location": r.get("location","") or "",
+                "phone": r.get("phone","") or "",
+                "email": r.get("email","") or "",
+                "description": (r.get("description","") or "")[:200],
+                "notes": (r.get("notes","") or "")[:300],
+            })
+
+    # Also query Elastic if the query looks like an indicator
+    elastic_hits = []
+    try:
+        es_url = _safe_es_url(settings.elasticsearch_url)
+        user = urlparse(es_url).username
+        pw = urlparse(es_url).password
+        res = await es_request("POST", "/_search?size=5", body={
+            "query": {
+                "multi_match": {
+                    "query": q,
+                    "fields": ["message", "url", "host*", "user*", "process*"],
+                    "fuzziness": "AUTO"
+                }
+            }
+        }, base_url=es_url, username=user, password=pw)
+        if res and res.get("hits"):
+            for h in res["hits"].get("hits", [])[:5]:
+                src = h.get("_source", {})
+                elastic_hits.append({
+                    "index": h.get("_index"),
+                    "id": h.get("_id"),
+                    "score": h.get("_score", 0),
+                    "sample": json.dumps(src, default=str)[:400],
+                })
+    except Exception:
+        pass
+
+    # Sort by score desc, limit
+    results.sort(key=lambda x: x.get("score", 0), reverse=True)
+    results = results[:limit]
+
+    # Count by type
+    type_counts = {}
+    for r in results:
+        type_counts[r["type"]] = type_counts.get(r["type"], 0) + 1
+
+    return E({
+        "query": q,
+        "results": results,
+        "total": len(results),
+        "type_counts": type_counts,
+        "elastic_matches": elastic_hits,
+    })
+
+
+# ═══════════════════════════════════════════════════════════
 # PASSWORD RESET
 # ═══════════════════════════════════════════════════════════
 @app.post("/api/auth/password-reset-request")
