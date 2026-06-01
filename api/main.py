@@ -72,6 +72,10 @@ async def migrate_db(db):
         "alter table accounts add column if not exists password_hash text default ''",
         "alter table accounts add column if not exists team_id uuid",
         "create table if not exists teams (id uuid primary key default gen_random_uuid(), team_type text not null default 'CPT', number text unique not null, name text not null, description text default '', logo_url text default '', location text default '', phone text default '', email text default '', notes text default '', team_lead_id uuid, deputy_team_lead_id uuid, planner_id uuid, ncoic_id uuid, created_at timestamptz default now(), updated_at timestamptz default now())",
+        "alter table teams add column if not exists team_lead_text text default ''",
+        "alter table teams add column if not exists deputy_team_lead_text text default ''",
+        "alter table teams add column if not exists planner_text text default ''",
+        "alter table teams add column if not exists ncoic_text text default ''",
         "create table if not exists auth_sessions (token text primary key, account_id uuid references accounts(id) on delete cascade, created_at timestamptz default now(), expires_at timestamptz not null)",
         "alter table auth_sessions add column if not exists last_seen_at timestamptz default now()",
         "alter table auth_sessions add column if not exists current_view text default ''",
@@ -451,14 +455,30 @@ def team_display(row) -> str:
     d = dict(row)
     typ = (d.get("team_type") or "").strip().upper()
     num = (d.get("team_number") or d.get("number") or "").strip()
+    name = (d.get("team_name") or d.get("name") or "").strip()
+    if not num:
+        m = re.match(r"^(\d+)\s+(?:National\s+)?Cyber\s+Protection\s+Team$", name, re.I)
+        if m:
+            num = m.group(1)
+    if not typ and "national" in name.lower():
+        typ = "NCPT"
     base = "National Cyber Protection Team" if typ == "NCPT" else "Cyber Protection Team"
     if num:
         return f"{num} {base}"
-    name = (d.get("team_name") or d.get("name") or "").strip()
-    m = re.match(r"^(\d+)\s+(National\s+Cyber\s+Protection\s+Team|Cyber\s+Protection\s+Team)$", name, re.I)
-    if m:
-        return f"{m.group(1)} {m.group(2)}"
-    return name or "Unassigned"
+    return f"Team Number Required {base}"
+
+
+def team_public(r):
+    d = rd(r)
+    d["team_display"] = team_display(d)
+    return d
+
+
+async def require_admin_from_token(p, token: str):
+    if not token:
+        return None
+    row = await p.fetchrow("select a.* from auth_sessions s join accounts a on a.id=s.account_id where s.token=$1 and s.expires_at>now()", token)
+    return row if row and row["privilege_level"] == "admin" else None
 
 
 def _jsonish(v):
@@ -649,7 +669,7 @@ async def documents(session_id: Optional[str] = None):
         rows = await (await P()).fetch("select * from documents where session_id=$1 order by created_at desc", uuid.UUID(session_id))
     else:
         rows = await (await P()).fetch("select * from documents order by created_at desc limit 50")
-    return E([rd(r) for r in rows])
+    return E([team_public(r) for r in rows])
 
 
 @app.get("/api/events")
@@ -964,7 +984,7 @@ async def teams():
         left join accounts a on a.team_id=t.id
         group by t.id order by case when t.team_type='CPT' then 0 else 1 end, lpad(t.number,3,'0')
     """)
-    return E([rd(r) for r in rows])
+    return E([team_public(r) for r in rows])
 
 
 @app.post("/api/teams")
@@ -974,12 +994,12 @@ async def upsert_team(payload: dict):
     if actor["privilege_level"] != "admin":
         return E(None, error="admin required")
     r = await p.fetchrow("""
-        insert into teams(team_type,number,name,description,logo_url,location,phone,email,notes,team_lead_id,deputy_team_lead_id,planner_id,ncoic_id)
-        values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-        on conflict(number) do update set team_type=excluded.team_type, name=excluded.name, description=excluded.description, logo_url=excluded.logo_url, location=excluded.location, phone=excluded.phone, email=excluded.email, notes=excluded.notes, team_lead_id=excluded.team_lead_id, deputy_team_lead_id=excluded.deputy_team_lead_id, planner_id=excluded.planner_id, ncoic_id=excluded.ncoic_id, updated_at=now()
+        insert into teams(team_type,number,name,description,logo_url,location,phone,email,notes,team_lead_id,deputy_team_lead_id,planner_id,ncoic_id,team_lead_text,deputy_team_lead_text,planner_text,ncoic_text)
+        values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+        on conflict(number) do update set team_type=excluded.team_type, name=excluded.name, description=excluded.description, logo_url=excluded.logo_url, location=excluded.location, phone=excluded.phone, email=excluded.email, notes=excluded.notes, team_lead_id=excluded.team_lead_id, deputy_team_lead_id=excluded.deputy_team_lead_id, planner_id=excluded.planner_id, ncoic_id=excluded.ncoic_id, team_lead_text=excluded.team_lead_text, deputy_team_lead_text=excluded.deputy_team_lead_text, planner_text=excluded.planner_text, ncoic_text=excluded.ncoic_text, updated_at=now()
         returning *
-    """, payload.get("team_type", "CPT"), payload["number"], payload.get("name") or f"{payload['number']} {'National Cyber Protection Team' if payload.get('team_type') == 'NCPT' else 'Cyber Protection Team'}", payload.get("description", ""), payload.get("logo_url", ""), payload.get("location", ""), payload.get("phone", ""), payload.get("email", ""), payload.get("notes", ""), uuid.UUID(payload["team_lead_id"]) if payload.get("team_lead_id") else None, uuid.UUID(payload["deputy_team_lead_id"]) if payload.get("deputy_team_lead_id") else None, uuid.UUID(payload["planner_id"]) if payload.get("planner_id") else None, uuid.UUID(payload["ncoic_id"]) if payload.get("ncoic_id") else None)
-    return E(rd(r))
+    """, payload.get("team_type", "CPT"), payload["number"], payload.get("name") or f"{payload['number']} {'National Cyber Protection Team' if payload.get('team_type') == 'NCPT' else 'Cyber Protection Team'}", payload.get("description", ""), payload.get("logo_url", ""), payload.get("location", ""), payload.get("phone", ""), payload.get("email", ""), payload.get("notes", ""), uuid.UUID(payload["team_lead_id"]) if payload.get("team_lead_id") else None, uuid.UUID(payload["deputy_team_lead_id"]) if payload.get("deputy_team_lead_id") else None, uuid.UUID(payload["planner_id"]) if payload.get("planner_id") else None, uuid.UUID(payload["ncoic_id"]) if payload.get("ncoic_id") else None, payload.get("team_lead_text", ""), payload.get("deputy_team_lead_text", ""), payload.get("planner_text", ""), payload.get("ncoic_text", ""))
+    return E(team_public(r))
 
 
 @app.get("/api/teams/{team_id}")
@@ -993,7 +1013,7 @@ async def team_detail(team_id: str):
     for field in ["team_lead_id", "deputy_team_lead_id", "planner_id", "ncoic_id"]:
         aid = t[field]
         leadership[field] = account_public(await p.fetchrow("select * from accounts where id=$1", aid)) if aid else None
-    return E({**rd(t), "leadership": leadership, "members": [account_public(m) for m in members]})
+    return E({**team_public(t), "leadership": leadership, "members": [account_public(m) for m in members]})
 
 
 @app.get("/api/setup/kibana")
@@ -1101,6 +1121,28 @@ async def chat(payload: dict):
     sample_line = (" Sample: " + samples[0].get("sample", "")[:500]) if samples else ""
     return E({"answer": fallback + "Current context includes %d events and %d cases. Elastic query `%s` returned %s matches.%s" % (len(context["events"]), len(context["cases"]), context["elastic"].get("query", ""), context["elastic"].get("total", 0), sample_line), "model": "deterministic+elastic", "elastic": context["elastic"]})
 
+
+
+@app.get("/api/admin/overview")
+async def admin_overview(token: str = ""):
+    p = await P()
+    actor = await require_admin_from_token(p, token)
+    if not actor:
+        return E(None, error="admin required")
+    counts = {}
+    for key, sql in {
+        "accounts": "select count(*) from accounts",
+        "teams": "select count(*) from teams",
+        "events": "select count(*) from events",
+        "cases": "select count(*) from cases",
+        "sessions": "select count(*) from hunt_sessions",
+        "custom_agents": "select count(*) from custom_agents where archived_at is null",
+        "online": "select count(distinct account_id) from auth_sessions where expires_at>now() and last_seen_at>now()-interval '5 minutes'",
+    }.items():
+        counts[key] = int(await p.fetchval(sql) or 0)
+    token_estimate = int(await p.fetchval("select coalesce(sum(length(explanation)+length(raw_log_sample)+length(recommended_next_question)),0)/4 from events") or 0)
+    recent = [dict(r) for r in await p.fetch("select name,status,created_at,updated_at from hunt_sessions order by updated_at desc limit 8")]
+    return E({"counts": counts, "token_usage_estimate": token_estimate, "recent_tasks": recent, "security": await security_config(p), "kibana": await kibana_config(p)})
 
 @app.get("/api/enrichment/configs")
 async def enrichment_configs():
