@@ -634,6 +634,72 @@ body::before {
   border-radius: 1px;
 }
 
+/* ── Shared Bottom Bar ── */
+.shared-bottom-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 28px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  font-family: var(--mono);
+}
+.shared-bottom-bar.hidden { transform: translateY(100%); opacity: 0; pointer-events: none; }
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.case-toolbar-btn {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.case-toolbar-btn:hover { border-color: var(--border-active); color: var(--text); }
+.online-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.online-dot.green { background: var(--green); box-shadow: 0 0 5px var(--green); }
+.online-dot.yellow { background: var(--amber); box-shadow: 0 0 5px var(--amber); }
+.notif-badge {
+  display: inline-block;
+  background: var(--red);
+  color: #fff;
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 1px;
+  line-height: 1;
+}
+.online-toolbar-panel, .notif-toolbar-panel {
+  position: fixed;
+  bottom: 42px;
+  right: 28px;
+  width: 280px;
+  max-height: 300px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 3px 3px 0 0;
+  overflow: auto;
+  z-index: 105;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
+}
+.online-toolbar-body, .notif-toolbar-body {
+  padding: 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
 /* ── Cases Drawer ── */
 .cases-drawer {
   position: fixed;
@@ -1676,7 +1742,7 @@ async function loadNotifications(){ const box=document.getElementById('notifTool
   const notifs=(d.data||d||[]); if(!notifs.length){box.innerHTML='<div style="color:var(--text-muted);padding:8px;font-family:var(--mono);font-size:10px">No notifications.</div>';return;}
   box.innerHTML=notifs.slice(0,10).map(n=>`<div class="notif-item ${n.read_at?'':'unread'}"><div class="notif-time">${escapeHtml(n.n_type)} · ${compactTime(n.created_at)}${n.sender_name?' · '+escapeHtml(n.sender_name):''}</div><div class="notif-body-text">${escapeHtml(n.body||'')}${n.case_id?'<br><span style="color:var(--blue);cursor:pointer" onclick="openCaseLab(\''+escapeHtml(n.case_id)+'\')\')\')\')\')\')\')">View case \''+escapeHtml(n.case_id)+'\' </span>':''}</div></div>`).join('');
 }
-async function pollNotifications(){ try{ const d=await api('/api/notifications/unread-count?token='+encodeURIComponent(state.token)).catch(()=>({count:0})); const badge=document.getElementById('notifBadge'); if(badge){ const c=d.data?.count??d.count||0; if(c>0){badge.textContent=String(Math.min(c,99)); badge.style.display='';} else badge.style.display='none'; }}catch(e){}}
+async function pollNotifications(){ try{ const d=await api('/api/notifications/unread-count?token='+encodeURIComponent(state.token)).catch(()=>({count:0})); const badge=document.getElementById('notifBadge'); if(badge){ const c=(d.data?.count??d.count)||0; if(c>0){badge.textContent=String(Math.min(c,99)); badge.style.display='';} else badge.style.display='none'; }}catch(e){}}
 async function openTeamProfile(id){ const t=await api('/api/teams/'+encodeURIComponent(id)).catch(e=>({error:e.message})); const panel=document.getElementById('profilePanel'), body=document.getElementById('profileBody'); panel.classList.add('open'); if(t.error){ body.innerHTML=`<div class="tl-body">${escapeHtml(t.error)}</div>`; return; } body.innerHTML=`<div class="case-section"><h3>${teamLabel(t)}</h3><div class="case-section-body"><div class="detail-kv-grid"><div class="detail-kv"><div class="detail-kv-key">Type</div><div class="detail-kv-val">${escapeHtml(t.team_type||'')}</div></div><div class="detail-kv"><div class="detail-kv-key">Number</div><div class="detail-kv-val">${escapeHtml(t.number||'')}</div></div><div class="detail-kv"><div class="detail-kv-key">Location</div><div class="detail-kv-val">${escapeHtml(t.location||'')}</div></div><div class="detail-kv"><div class="detail-kv-key">Phone</div><div class="detail-kv-val">${escapeHtml(t.phone||'')}</div></div><div class="detail-kv"><div class="detail-kv-key">Email</div><div class="detail-kv-val">${escapeHtml(t.email||'')}</div></div></div><br><div class="detail-section-label">Mission / Notes</div><div class="detail-text">${escapeHtml(t.notes||t.description||'')}</div></div></div><div class="case-section"><h3>Members</h3><div class="case-section-body">${(t.members||[]).map(a=>`<div class="profile-card"><b onclick="openProfile('${a.id}')" style="cursor:pointer">${personName(a)}</b><br><span class="tl-time">${escapeHtml(a.skill_level||'')} ${escapeHtml(a.work_role||'')}</span></div>`).join('')||'<div class="tl-body">No members.</div>'}</div></div>`; }
 function teamLinkFromAccount(a){ const label=accountTeamLabel(a); const id=a.team_id; return id ? `<span onclick="event.stopPropagation();openTeamProfile('${id}')" style="cursor:pointer;color:var(--blue)">${label}</span>` : label; }
 
