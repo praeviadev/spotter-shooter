@@ -1326,29 +1326,89 @@ async def create_messages_table():
                 created_at timestamptz default now()
             )
         """)
+        await p.execute("""
+            create table if not exists chat_history(
+                id uuid primary key default gen_random_uuid(),
+                token text not null,
+                role text not null default 'analyst',
+                seq int not null default 0,
+                message text not null,
+                answer text not null,
+                created_at timestamptz default now()
+            )
+        """)
+        # Cleanup old chat history on startup (keep last 20 per token+role)
+        await p.execute("""
+            delete from chat_history where id in (
+                select id from (
+                    select id, row_number() over (partition by token, role order by seq desc) as rn
+                    from chat_history
+                ) sub where rn > 20
+            )
+        """)
     except: pass
 
 
 @app.post("/api/chat")
 async def chat(payload: dict):
     role = payload.get("role", "analyst")
-    question = payload.get("message", "")[:2000]
-    context = {"role": role, "question": question, "events": [], "cases": [], "elastic": {}}
+    question = payload.get("message", "")[:2000]  # type: str
     p = await P()
     if payload.get("token"):
         await p.execute("update auth_sessions set last_seen_at=now(), current_view=$2 where token=$1 and expires_at>now()", payload.get("token"), f"{role}_chat")
-    for r in await p.fetch("select event_id,title,severity,status,explanation,raw_log_sample from events order by updated_at desc limit 8"):
-        context["events"].append(dict(r))
-    for r in await p.fetch("select case_id,name,status,final_output,narrative_summary from cases order by updated_at desc limit 5"):
-        context["cases"].append(dict(r))
-    context["elastic"] = await chatbot_elastic_context(question)
+    # Conversation history: last 6 turns for this session+role
+    token = payload.get("token", "")
+    history = []
+    if token:
+        rows = await p.fetch("select role,message,answer from chat_history where token=$1 and role=$2 order by seq desc limit 6", token, role)
+        for r in reversed(rows):
+            history.append({"role": "user", "content": r["message"]})
+            history.append({"role": "assistant", "content": r["answer"]})
+    seq = (await p.fetchrow("select coalesce(max(seq),0)+1 as next from chat_history where token=$1 and role=$2", token, role))["next"] if token else 0
+
+    # Live context snapshots
+    events = [dict(r) for r in await p.fetch("select event_id,title,severity,status,explanation from events order by updated_at desc limit 8")]
+    cases = [dict(r) for r in await p.fetch("select case_id,name,status,final_output,narrative_summary from cases order by updated_at desc limit 5")]
+    elastic = await chatbot_elastic_context(question) if question else {"query": "", "total": 0, "samples": []}
+
+    commander_system = (
+        "You are a senior SOC Commander briefing assistant. You give crisp, executive-level answers. "
+        "NEVER dump raw Elastic queries, match counts, or query strings. "
+        "Answer from the analyst perspective. Do not repeat event details. "
+        "Ask one sharp follow-up when helpful. Be direct, not interrogative. "
+        "If asked a follow-up about the same case/session, use the previous turns as context. "
+        "When the user says 'don\'t tell me about X' or similar, acknowledge it and pivot. "
+        "Structure: 1-2 sentence direct answer first. Then bullet points if needed. "
+        "Tone: confident, professional, no filler."
+    )
+    analyst_system = (
+        "You are a senior threat-hunting analyst assistant. You help triage, pivot, and build cases. "
+        "Reference specific event IDs, hosts, techniques. Cite Elastic query results naturally without dumping syntax. "
+        "Answer directly, give concrete next steps. Do not be interrogative. "
+        "Structure: direct answer, then recommended action. Keep it concise."
+    )
+
+    system_prompt = commander_system if role == "commander" else analyst_system
+    context_block = json.dumps({"top_events": events, "open_cases": cases, "elastic_snapshot": elastic}, default=str)[:4000]
+
+    messages = [{"role": "system", "content": system_prompt}] + history + [{"role": "user", "content": f"{question}\n\nContext:\n{context_block}"}]
+
     if settings.openrouter_api_key:
-        ans = await openrouter_agent_summary(f"{role}_chatbot", {"title": "Operator question with live Elastic context", "question": question, "context": context, "fallback_explanation": "Answer from current case/event context and live Elastic search evidence."}, "medium")
-        return E({"answer": ans["explanation"] + "\n\nElastic query: " + context["elastic"].get("query", "") + " // matches: " + str(context["elastic"].get("total", 0)) + "\n\nSuggested way ahead: " + ans["recommended_next_question"], "model": ans.get("model_used"), "elastic": context["elastic"]})
-    fallback = "Review the highest-severity open alerts, confirm raw evidence, and update the case timeline. " if role == "analyst" else "Focus the briefing on open cases, unresolved 5 Ws, affected assets, and decisions needed. "
-    samples = context["elastic"].get("samples", [])
-    sample_line = (" Sample: " + samples[0].get("sample", "")[:500]) if samples else ""
-    return E({"answer": fallback + "Current context includes %d events and %d cases. Elastic query `%s` returned %s matches.%s" % (len(context["events"]), len(context["cases"]), context["elastic"].get("query", ""), context["elastic"].get("total", 0), sample_line), "model": "deterministic+elastic", "elastic": context["elastic"]})
+        headers = {"Authorization": f"Bearer {settings.openrouter_api_key}", "Content-Type": "application/json", "HTTP-Referer": "http://127.0.0.1:8097", "X-Title": "Spotter-Shooter MVP"}
+        chat_payload = {"model": settings.openrouter_model, "messages": messages, "temperature": 0.3, "max_tokens": 600}
+        async with httpx.AsyncClient(timeout=45) as c:
+            r = await c.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=chat_payload)
+            r.raise_for_status()
+            answer = r.json()["choices"][0]["message"]["content"].strip()
+        model_used = settings.openrouter_model.split("/")[-1]
+        # Store in history
+        if token:
+            await p.execute("insert into chat_history(token,role,seq,message,answer) values($1,$2,$3,$4,$5)", token, role, seq, question[:2000], answer[:3000])
+        return E({"answer": answer, "model": model_used, "role": role})
+
+    # Deterministic fallback when no OpenRouter
+    fallback_cmd = "Review open cases for unresolved items. Focus on affected assets, decisions needed, and resource allocation." if role == "commander" else "Review highest-severity open alerts, confirm raw evidence, and update the case timeline."
+    return E({"answer": fallback_cmd, "model": "deterministic", "role": role, "elastic": elastic})
 
 
 
