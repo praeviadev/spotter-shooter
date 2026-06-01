@@ -2282,36 +2282,36 @@ html, body { height: 100%; }
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-title">Ollama Configuration</div>
+  <div class="card" id="modelConfig">
+    <div class="card-title" id="modelConfigTitle">Ollama Configuration</div>
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Provider URL</label>
-        <input class="form-input" type="text" value="http://ollama.ops.internal:11434">
+        <input class="form-input" id="modelProviderUrl" type="text" value="http://localhost:11434">
       </div>
       <div class="form-group">
         <label class="form-label">API Key</label>
-        <input class="form-input" type="password" placeholder="(Not required for Ollama)">
+        <input class="form-input" id="modelApiKey" type="password" placeholder="(Not required for Ollama)">
       </div>
     </div>
     <div class="form-row-3">
       <div class="form-group">
         <label class="form-label">Model</label>
-        <input class="form-input" type="text" value="llama3.1:70b">
+        <input class="form-input" id="modelName" type="text" value="llama3.1:70b">
       </div>
       <div class="form-group">
         <label class="form-label">Context Window</label>
-        <input class="form-input" type="text" value="128000">
+        <input class="form-input" id="modelContext" type="text" value="128000">
       </div>
       <div class="form-group">
         <label class="form-label">Temperature</label>
-        <input class="form-input" type="text" value="0.1">
+        <input class="form-input" id="modelTemperature" type="text" value="0.1">
       </div>
     </div>
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Max Tokens</label>
-        <input class="form-input" type="text" value="4096">
+        <input class="form-input" id="modelMaxTokens" type="text" value="4096">
       </div>
     </div>
 
@@ -2791,7 +2791,8 @@ const state = {
   documents: [],
   agents: [],
   selectedTelemetry: 'elastic',
-  selectedModel: 'ollama'
+  selectedModel: 'ollama',
+  modelConfig: {}
 };
 
 async function api(path, options = {}) {
@@ -2862,7 +2863,44 @@ function goTo(n) {
 }
 async function beginSetup() { await loadHealth(); setTimeout(() => goTo(1), 500); }
 function selectTelemetry(el, provider='elastic') { state.selectedTelemetry = provider; document.querySelectorAll('.provider-grid .provider-card').forEach(c => c.classList.remove('selected')); el.classList.add('selected'); }
-function selectModel(el, provider='ollama') { state.selectedModel = provider; document.querySelectorAll('.model-provider-grid .provider-card').forEach(c => c.classList.remove('selected')); el.classList.add('selected'); }
+const MODEL_PRESETS = {
+  ollama: {title:'Ollama Configuration', url:'http://localhost:11434', key:'', keyPlaceholder:'(Not required for Ollama)', model:'llama3.1:70b', context:'128000', temperature:'0.1', maxTokens:'4096'},
+  openai: {title:'OpenAI Configuration', url:'https://api.openai.com/v1', key:'', keyPlaceholder:'sk-...', model:'gpt-4o-mini', context:'128000', temperature:'0.1', maxTokens:'4096'},
+  anthropic: {title:'Anthropic Configuration', url:'https://api.anthropic.com', key:'', keyPlaceholder:'sk-ant-...', model:'claude-3-5-sonnet-latest', context:'200000', temperature:'0.1', maxTokens:'4096'},
+  openrouter: {title:'OpenRouter Configuration', url:'https://openrouter.ai/api/v1', key:'', keyPlaceholder:'sk-or-...', model:'openai/gpt-4o-mini', context:'128000', temperature:'0.1', maxTokens:'4096'},
+  custom: {title:'On-Prem / Custom OpenAI-Compatible Configuration', url:'http://localhost:8000/v1', key:'', keyPlaceholder:'optional', model:'local-model', context:'32768', temperature:'0.1', maxTokens:'4096'}
+};
+function readModelForm() {
+  return {
+    provider: state.selectedModel,
+    url: document.getElementById('modelProviderUrl')?.value || '',
+    api_key: document.getElementById('modelApiKey')?.value || '',
+    model: document.getElementById('modelName')?.value || '',
+    context_window: document.getElementById('modelContext')?.value || '',
+    temperature: document.getElementById('modelTemperature')?.value || '',
+    max_tokens: document.getElementById('modelMaxTokens')?.value || ''
+  };
+}
+function applyModelPreset(provider) {
+  const cfg = {...MODEL_PRESETS[provider], ...(state.modelConfig[provider] || {})};
+  document.getElementById('modelConfigTitle').textContent = cfg.title;
+  document.getElementById('modelProviderUrl').value = cfg.url;
+  document.getElementById('modelApiKey').value = cfg.key || '';
+  document.getElementById('modelApiKey').placeholder = cfg.keyPlaceholder;
+  document.getElementById('modelName').value = cfg.model;
+  document.getElementById('modelContext').value = cfg.context;
+  document.getElementById('modelTemperature').value = cfg.temperature;
+  document.getElementById('modelMaxTokens').value = cfg.maxTokens;
+  const r = document.getElementById('modelResult');
+  if (r) r.style.display = 'none';
+}
+function selectModel(el, provider='ollama') {
+  state.modelConfig[state.selectedModel] = readModelForm();
+  state.selectedModel = provider;
+  document.querySelectorAll('.model-provider-grid .provider-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  applyModelPreset(provider);
+}
 
 async function testConnection() {
   const r = document.getElementById('connResult');
@@ -2892,7 +2930,7 @@ async function testModel() {
   r.style.display = 'block';
   r.innerHTML = '<div class="conn-result-head"><span>…</span> Testing model route</div>';
   try {
-    const data = await api('/api/setup/model/test', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({provider:state.selectedModel})});
+    const data = await api('/api/setup/model/test', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(readModelForm())});
     r.innerHTML = `<div class="conn-result-head"><span>✓</span> Model Connected</div><div>${escapeHtml(data.provider)} // ${escapeHtml(data.model)} // ${escapeHtml(data.mode)}</div>`;
   } catch (e) { r.innerHTML = `<div class="conn-result-head"><span>!</span> Model Failed</div><div>${escapeHtml(e.message)}</div>`; }
 }
@@ -2922,7 +2960,7 @@ async function launchHunt() {
   ['lo1','lo2','lo3','lo4','lo5','lo6'].forEach((id, i) => setTimeout(() => document.getElementById(id).classList.add('los'), 250 + i * 350));
   try {
     const selectedAgents = [...document.querySelectorAll('.agent-item.selected')].map(x => x.textContent.replace('✓','').trim());
-    const data = await api('/api/setup/launch', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({telemetry:state.telemetry, model:state.selectedModel, agents:selectedAgents})});
+    const data = await api('/api/setup/launch', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({telemetry:state.telemetry, model:readModelForm(), agents:selectedAgents})});
     state.sessionId = data.session_id;
     document.getElementById('loSub').innerHTML = `${escapeHtml(data.name || 'HUNT')} // ${selectedAgents.length} Agents Online`;
     await refreshOpsData();
@@ -3006,5 +3044,6 @@ function renderCommander() {
 function updateClock() { const el=document.getElementById('cmdTimestamp'); if(el) el.textContent = new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'}) + ' UTC'; }
 setInterval(updateClock, 1000); updateClock();
 loadHealth();
+applyModelPreset(state.selectedModel);
 </script></body>
 </html>
