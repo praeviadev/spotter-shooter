@@ -4,7 +4,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;600;700;800&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#0d0f12;--surface:#15191c;--surface2:#1c2024;--border:#2a3036;--text:#d4dde4;--text-dim:#52606a;--text-muted:#3a4e58;--amber:#e8a427;--amber-dim:rgba(232,164,39,.15);--amber-glow:rgba(232,164,39,.08);--red:#e85238;--green:#4caf6f;--blue:#4a9eca;--purple:#9c72e6;--mono:'Share Tech Mono',monospace;--body:'Barlow',sans-serif;--display:'Barlow Condensed',sans-serif}
+:root{--bg:#0a0c0e;--surface:#111416;--surface2:#181c1f;--border:#252b30;--text:#c8d4da;--text-dim:#6a8090;--text-muted:#3a4e58;--amber:#e8a427;--amber-dim:#a06b10;--amber-glow:rgba(232,164,39,0.10);--red:#d9534f;--green:#4caf6f;--blue:#4a9eca;--purple:#9b72cf;--mono:'Share Tech Mono',monospace;--body:'Barlow',sans-serif;--display:'Barlow Condensed',sans-serif}
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:100vh}
 /* Header */
@@ -13,21 +13,24 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:1
 .logo-mark{font-family:var(--display);font-weight:700;font-size:18px;letter-spacing:.08em;color:var(--amber);text-transform:uppercase}
 .logo-sep{color:var(--text-dim)}
 .logo-sub{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.12em;text-transform:uppercase}
-.header-center{display:flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:2px;padding:4px}
-.role-btn{font-family:var(--display);font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:6px 22px;border:none;background:transparent;color:var(--text-dim);cursor:pointer;border-radius:1px;transition:all .2s}
-.role-btn:hover{color:var(--text)}.role-btn.active{background:var(--amber);color:#0a0c0e}
+.header-center{display:flex;align-items:center;gap:4px}
+.role-btn{font-family:var(--display);font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:6px 22px;border:1px solid var(--border);background:transparent;color:var(--text-dim);cursor:pointer;border-radius:2px;transition:all .2s}
+.role-btn:hover{border-color:var(--border-active);color:var(--text)}.role-btn.active{background:var(--amber);color:#0a0c0e;border-color:var(--amber)}
 .header-right{display:flex;align-items:center;gap:18px}
 .live-badge{font-family:var(--mono);font-size:10px;color:var(--text-dim);display:flex;align-items:center;gap:6px}
-.dot{width:6px;height:6px;border-radius:50%;display:inline-block}
-.dot.green{background:var(--green);box-shadow:0 0 6px rgba(76,175,111,.4)}
+.dot{width:6px;height:6px;border-radius:50%;display:inline-block}.dot.green{background:var(--green);box-shadow:0 0 6px rgba(76,175,111,.4)}
 .hunt-name{font-family:var(--display);font-size:13px;font-weight:600;letter-spacing:.08em;color:var(--text);cursor:pointer}
 /* Banner */
-.readonly-banner{padding:10px 18px;background:var(--amber-glow);border-bottom:1px solid var(--amber-dim);color:var(--amber);font-family:var(--mono);font-size:11px;text-transform:uppercase;display:flex;gap:10px;align-items:center;justify-content:center}
+.readonly-banner{padding:10px 18px;background:var(--amber-glow);border-bottom:1px solid var(--amber-dim);color:var(--amber);font-family:var(--mono);font-size:11px;text-transform:uppercase;display:none;gap:10px;align-items:center;justify-content:center}
 .readonly-banner a{color:var(--blue);cursor:pointer;text-decoration:underline}
+/* Login panel */
+.login-panel{position:fixed;right:34px;bottom:84px;width:420px;background:var(--surface);border:1px solid var(--border);z-index:210;display:none;box-shadow:0 0 0 9999px rgba(0,0,0,.35)}
+.login-panel.open{display:block}
+.login-panel-inner{padding:16px}
+.login-panel-title{font-family:var(--display);font-size:14px;color:var(--amber);letter-spacing:.1em;text-transform:uppercase;margin-bottom:12px}
 /* Main layout */
 .admin-container{max-width:1400px;margin:0 auto;padding:24px 28px}
 .admin-section{margin-bottom:40px}
-.admin-section h2{font-family:var(--display);font-size:20px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px;padding-bottom:8px;border-bottom:1px solid var(--border)}
 .admin-grid{display:grid;grid-template-columns:1fr 450px;gap:20px}
 .admin-card{background:var(--surface);border:1px solid var(--border);border-radius:3px;overflow:hidden;margin-bottom:16px}
 .admin-card h3{font-family:var(--display);font-size:14px;color:var(--amber);padding:12px 14px;border-bottom:1px solid var(--border);letter-spacing:.08em;text-transform:uppercase}
@@ -42,7 +45,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:1
 .btn-sm{padding:5px 12px;font-size:10px}
 .btn-danger{border-color:var(--red);color:var(--red)}.btn-danger:hover{background:var(--red);color:#fff}
 .btn-success{border-color:var(--green);color:var(--green)}.btn-success:hover{background:var(--green);color:#0a0c0e}
-.item-list{max-height:400px;overflow-auto}
+.item-list{max-height:400px;overflow:auto}
 .item-row{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;font-size:12px;font-family:var(--mono)}
 .item-row:hover{background:var(--surface2)}
 .item-info{flex:1}
@@ -55,18 +58,26 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:1
 /* Password reset */
 .pwreset-box{background:var(--surface);border:1px solid var(--amber-dim);border-radius:3px;padding:20px;max-width:500px}
 .pwreset-box h3{color:var(--amber);margin-bottom:12px;font-family:var(--display);letter-spacing:.08em}
-/* Notification banner */
-.notif-banner{background:var(--amber-glow);border-bottom:1px solid var(--amber-dim);padding:8px 18px;cursor:pointer;font-family:var(--mono);font-size:11px;color:var(--amber);display:none}
-.notif-banner.visible{display:block}
 /* Tab navigation */
 .admin-tabs{display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:0}
 .tab-btn{font-family:var(--display);font-size:14px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;padding:8px 18px;border:none;background:transparent;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s}
 .tab-btn:hover{color:var(--text)}.tab-btn.active{color:var(--amber);border-bottom-color:var(--amber)}
 .tab-content{display:none}.tab-content.active{display:block}
+/* Audit trail */
+.audit-entry{padding:10px 14px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:11px}
+.audit-entry:hover{background:var(--surface2)}
+.audit-action{color:var(--amber);font-weight:700}
+.audit-time{color:var(--text-muted);font-size:10px}
+/* Agent cycle */
+.agent-cycle-row{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+/* Settings */
+.setting-section{margin-bottom:24px;padding:16px;border:1px solid var(--border);background:var(--surface)}
+.setting-section h4{font-family:var(--display);font-size:13px;color:var(--text-dim);letter-spacing:.1em;text-transform:uppercase;margin-bottom:12px}
 /* Scrollbar */
 ::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 </style></head>
 <body>
+
 <header class="header">
   <div class="logo">
     <span class="logo-mark">Spotter-Shooter</span>
@@ -74,16 +85,25 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:1
     <span class="logo-sub">Admin Console</span>
   </div>
   <div class="header-center">
-    <button class="role-btn active" onclick="location.href='/operations.html'">Ops Console</button>
-    <button class="role-btn commander-nav" onclick="location.href='/operations.html?view=commander'">Commander View</button>
-    <button class="role-btn" onclick="openChatFromAdmin()">Chat</button>
+    <button class="role-btn active" onclick="location.href='/operations.html'">Back to Ops Console</button>
   </div>
   <div class="header-right">
     <div class="live-badge"><span class="dot green"></span> Stack Nominal</div>
     <div class="hunt-name" id="currentUserBadge" onclick="openLoginFromAdmin()" style="cursor:pointer">Login</div>
   </div>
 </header>
-<div class="readonly-banner" id="readOnlyBanner" style="display:none">Admin access required. <a onclick="openLoginFromAdmin()">Login</a> or <a onclick="openCreateAccount()">Create an Account</a>.</div>
+
+<div class="readonly-banner" id="readOnlyBanner">Admin access required. <a onclick="openLoginFromAdmin()" style="color:var(--blue);cursor:pointer;text-decoration:underline">Login</a>.</div>
+
+<div class="login-panel" id="adminLoginPanel">
+  <div class="login-panel-inner">
+    <div class="login-panel-title">Admin Login</div>
+    <div class="form-group"><input id="loginUser" placeholder="Username / Email"></div>
+    <div class="form-group"><input id="loginPass" type="password" placeholder="Password"></div>
+    <button class="btn" onclick="adminLogin()">Login</button>
+    <div id="adminLoginResult" style="margin-top:8px"></div>
+  </div>
+</div>
 
 <div class="admin-container" id="adminContent" style="display:none">
   <div class="stats-grid" id="statsGrid"></div>
@@ -95,28 +115,6 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:1
     <button class="tab-btn" onclick="switchTab('pwreset')">Password Reset</button>
     <button class="tab-btn" onclick="switchTab('agents')">Agent Management</button>
     <button class="tab-btn" onclick="switchTab('settings')">Settings</button>
-  </div>
-  
-    
-  <!-- Search Tab -->
-  <div class="tab-content active" id="tab-search">
-    <div class="admin-section">
-      <div class="admin-card">
-        <h3>Full Text Search</h3>
-        <div class="admin-card-body">
-          <div style="display:flex;gap:8px;margin-bottom:16px">
-            <input id="searchQuery" placeholder="Search cases, timeline, indicators, accounts, teams, Elastic..." 
-                   style="flex:1;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:13px;border-radius:2px"
-                   onkeydown="if(event.key==='Enter')doSearch()">
-            <button class="btn btn-success" onclick="doSearch()">Search</button>
-            <button class="btn" onclick="clearSearch()" style="font-size:10px;padding:5px 12px">Clear</button>
-          </div>
-          <div id="searchResults" style="font-family:var(--mono)">
-            <div style="color:var(--text-muted);padding:20px;text-align:center;font-size:12px">Enter a search term to find matches across cases, timeline entries, indicators, accounts, teams, and Elastic.</div>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
   
   <!-- Accounts Tab -->
@@ -147,6 +145,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:1
                 <div class="form-group">
                   <label>Service Branch</label>
                   <select id="acctBranch" onchange="updateRankOptionsFor('acct')">
+                    <option value="civilian">Civilian (CIV)</option>
                     <option>army</option><option>airforce</option><option>navy</option><option>coastguard</option><option>marines</option>
                   </select>
                 </div>
@@ -227,12 +226,14 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:1
     </div>
   </div>
   
-  <!-- Audit Tab -->
+  <!-- Audit Trail Tab -->
   <div class="tab-content" id="tab-audit">
     <div class="admin-section">
       <div class="admin-card">
         <h3>Audit Trail</h3>
-        <div class="admin-card-body item-list" id="auditList"><div class="empty-msg">No audit entries</div></div>
+        <div class="admin-card-body">
+          <div id="auditList"><div class="empty-msg">No audit entries</div></div>
+        </div>
       </div>
     </div>
   </div>
@@ -242,17 +243,20 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:1
     <div class="admin-section">
       <div class="pwreset-box">
         <h3>Password Reset Request</h3>
+        <p style="font-family:var(--mono);font-size:10px;color:var(--text-muted);margin-bottom:12px">Send a reset code to a user. If SMTP is not configured, the code will be displayed for demo purposes.</p>
         <div class="form-group"><label>Username / Email / Phone</label><input id="pwUser"></div>
         <div class="form-group"><label>Delivery Method</label><select id="pwMethod"><option value="email">Email</option><option value="sms">SMS</option></select></div>
-        <button class="btn" onclick="requestPwReset()">Send Reset Code</button>
+        <button class="btn btn-sm" onclick="requestPwReset()">Send Reset Code</button>
         <div id="pwResult" style="margin-top:12px"></div>
       </div>
       <div class="pwreset-box" style="margin-top:16px">
         <h3>Complete Password Reset</h3>
-        <div class="form-group"><label>Challenge ID</label><input id="pwChallengeId"></div>
-        <div class="form-group"><label>Reset Code</label><input id="pwCode"></div>
-        <div class="form-group"><label>New Password</label><input id="pwNewPassword" type="password"></div>
-        <button class="btn" onclick="verifyPwReset()">Set New Password</button>
+        <p style="font-family:var(--mono);font-size:10px;color:var(--text-muted);margin-bottom:12px">Enter the challenge ID and code from the request, then set a new password.</p>
+        <div class="form-group"><label>Challenge ID</label><input id="pwChallengeId" placeholder="UUID from request response"></div>
+        <div class="form-group"><label>Reset Code</label><input id="pwCode" placeholder="6-digit code"></div>
+        <div class="form-group"><label>New Password</label><input id="pwNewPassword" type="password" placeholder="New password"></div>
+        <button class="btn btn-sm" onclick="verifyPwReset()">Set New Password</button>
+        <div id="pwVerifyResult" style="margin-top:12px"></div>
       </div>
     </div>
   </div>
@@ -262,11 +266,11 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:1
     <div class="admin-section">
       <div class="admin-card">
         <h3>Agent Cycle Configuration</h3>
-        <div class="admin-card-body" id="agentCycleConfig"></div>
+        <div class="admin-card-body" id="agentCycleConfig"><div class="empty-msg">Loading...</div></div>
       </div>
       <div class="admin-card">
         <h3>Custom Agents</h3>
-        <div class="admin-card-body" id="customAgentList"></div>
+        <div class="admin-card-body" id="customAgentList"><div class="empty-msg">Loading...</div></div>
       </div>
     </div>
   </div>
@@ -275,19 +279,41 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:1
   <div class="tab-content" id="tab-settings">
     <div class="admin-section">
       <div class="admin-grid">
-        <div><div class="admin-card"><h3>Security</h3><div class="admin-card-body"><div class="form-group"><label>Require 2FA</label><select id="setTwofa"><option value="false">Optional</option><option value="true">Required</option></select></div><button class="btn" onclick="saveSecuritySettings()">Save</button></div></div></div>
-        <div><div class="admin-card"><h3>Kibana URL</h3><div class="admin-card-body"><div class="form-group"><label>Kibana URL</label><input id="setKibanaUrl"></div><button class="btn" onclick="saveKibanaSettings()">Save</button></div></div></div>
+        <div>
+          <div class="setting-section">
+            <h4>Security</h4>
+            <div class="form-group"><label>Require 2FA at Login</label><select id="setTwofa"><option value="false">Optional</option><option value="true">Required</option></select></div>
+            <button class="btn btn-sm" onclick="saveSecuritySettings()">Save</button>
+          </div>
+          <div class="setting-section">
+            <h4>Kibana</h4>
+            <div class="form-group"><label>Kibana URL</label><input id="setKibanaUrl" placeholder="https://your-kibana-host"></div>
+            <button class="btn btn-sm" onclick="saveKibanaSettings()">Save</button>
+          </div>
+          <div class="setting-section">
+            <h4>OpenRouter</h4>
+            <div id="openrouterSettings"><div class="empty-msg">Configure via .env file</div></div>
+          </div>
+        </div>
+        <div>
+          <div class="setting-section">
+            <h4>Enrichment APIs</h4>
+            <div class="form-group"><label>OpenCTI URL</label><input id="setOpenCtiUrl" placeholder="https://your-opencti"></div>
+            <div class="form-group"><label>OpenCTI API Key</label><input id="setOpenCtiKey" type="password" placeholder="API key"></div>
+            <div class="form-group"><label>VirusTotal API Key</label><input id="setVtKey" type="password" placeholder="VT API key"></div>
+            <button class="btn btn-sm" onclick="saveEnrichmentSettings()">Save</button>
+          </div>
+          <div class="setting-section">
+            <h4>SMTP / SMS Delivery</h4>
+            <div class="form-group"><label>SMTP URL (for email 2FA)</label><input id="setSmtpUrl" placeholder="https://smtp-gateway"></div>
+            <div class="form-group"><label>SMS Webhook URL (for SMS 2FA)</label><input id="setSmsUrl" placeholder="https://sms-gateway"></div>
+            <button class="btn btn-sm" onclick="saveDeliverySettings()">Save</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
-</div>
 
-<!-- Login panel (from operations) -->
-<div class="login-panel" id="adminLoginPanel" style="position:fixed;right:34px;bottom:84px;z-index:300;background:var(--surface);border:1px solid var(--border);padding:16px;width:320px;display:none"><div style="font-family:var(--display);font-size:13px;color:var(--amber);margin-bottom:10px">Login</div>
-  <div class="form-group"><input id="loginUser" placeholder="Username / Email"></div>
-  <div class="form-group"><input id="loginPass" type="password" placeholder="Password"></div>
-  <button class="btn" onclick="adminLogin()">Login</button>
-  <div id="adminLoginResult" style="margin-top:8px"></div>
 </div>
 
 <script>
@@ -297,7 +323,6 @@ let ACCOUNTS=[], TEAMS=[], ACCOUNT_OPTIONS={};
 
 async function api(path, opts={}){
   opts.headers = opts.headers||{};
-  // If body is FormData, don't set Content-Type
   if(!(opts.body instanceof FormData)) opts.headers['Content-Type'] = 'application/json';
   const res = await fetch(BASE+path, opts);
   if(!res.ok){ const txt=await res.text().catch(()=>''); throw new Error('HTTP '+res.status+': '+txt.slice(0,200)); }
@@ -306,136 +331,22 @@ async function api(path, opts={}){
   return body.data;
 }
 
-
-// ============ SEARCH ============
-async function doSearch(){
-  const q = document.getElementById('searchQuery').value.trim();
-  if(q.length < 2) return;
-  const results = document.getElementById('searchResults');
-  results.innerHTML = '<div style="color:var(--text-dim);padding:20px;text-align:center">Searching...</div>';
-  try{
-    const d = await api('/api/search?q='+encodeURIComponent(q)+'&limit=50&token='+encodeURIComponent(state.token)).catch(()=>null);
-    if(!d){results.innerHTML='<div class="empty-msg">Search failed</div>';return;}
-    renderSearchResults(d, q);
-  }catch(e){
-    results.innerHTML = '<div class="empty-msg">Search failed: '+escapeHtml(e.message)+'</div>';
-  }
-}
-function clearSearch(){
-  document.getElementById('searchQuery').value='';
-  document.getElementById('searchResults').innerHTML = '<div style="color:var(--text-muted);padding:20px;text-align:center;font-size:12px">Enter a search term to find matches across cases, timeline entries, indicators, accounts, teams, and Elastic.</div>';
-}
-function renderSearchResults(d, q){
-  var counts = d.type_counts||{};
-  var elasticCount = (d.elastic_matches||[]).length;
-  var summaryHTML = '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">';
-  var typeLabels = {case:['Cases','var(--amber)'],timeline:['Timeline','var(--blue)'],indicator:['Indicators','var(--purple)'],account:['Accounts','var(--green)'],team:['Teams','var(--red)']};
-  for(var t in counts){
-    var [label,color] = typeLabels[t]||[t,'var(--text)'];
-    summaryHTML += '<span style="background:var(--surface2);padding:4px 12px;border-radius:2px;font-size:11px;color:'+color+'">'+label+': '+counts[t]+'</span>';
-  }
-  summaryHTML += '</div>';
-  if(elasticCount > 0) summaryHTML += '<div style="margin-bottom:12px;font-size:11px;color:var(--green)">Elastic: '+elasticCount+' raw log matches</div>';
-  var groups = {};
-  (d.results||[]).forEach(function(r){ groups[r.type] = groups[r.type] || []; groups[r.type].push(r); });
-  var resultsHTML = summaryHTML;
-  for(var type in groups){
-    var items = groups[type];
-    var lbl = typeLabels[type]||[type,'var(--border)'];
-    var borderColor = lbl[1];
-    var label = lbl[0];
-    resultsHTML += '<div style="margin-bottom:16px">';
-    resultsHTML += '<div style="font-family:var(--display);font-size:12px;color:var(--text-dim);letter-spacing:.1em;text-transform:uppercase;padding:6px 0;border-bottom:1px solid '+borderColor+';margin-bottom:8px">'+label+' ('+items.length+')</div>';
-    items.forEach(function(item){
-      resultsHTML += '<div style="padding:8px 12px;border:1px solid var(--border);border-radius:2px;margin-bottom:6px;background:var(--surface2)">';
-      resultsHTML += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
-      resultsHTML += '<span style="font-weight:700;color:'+borderColor+'">'+escapeHtml(item.entity.name||item.entity.title||item.entity.value||item.entity.display_name||item.id)+'</span>';
-      resultsHTML += '<span style="font-size:9px;color:var(--text-muted)">score: '+item.score+'</span>';
-      resultsHTML += '</div>';
-      var e = item.entity;
-      var detail = '';
-      if(type === 'case'){
-        detail = '<span style="font-size:10px;color:var(--text-muted);margin-right:12px">'+escapeHtml(e.status||'')+'</span>';
-        if(e.how) detail += '<span style="font-size:10px;color:var(--text-muted);margin-right:12px">How: '+escapeHtml(e.how||'')+'</span>';
-        if(e.bluf) detail += '<div style="font-size:11px;margin-top:4px;color:var(--text-dim)">'+escapeHtml(e.bluf)+'</div>';
-      } else if(type === 'timeline'){
-        detail = '<span style="font-size:10px;color:var(--amber);margin-right:8px">'+escapeHtml(e.entry_type)+'</span>';
-        if(e.actor) detail += '<span style="font-size:10px;color:var(--text-muted);margin-right:8px">by '+escapeHtml(e.actor)+'</span>';
-        if(e.event_time) detail += '<span style="font-size:10px;color:var(--text-muted);margin-right:8px">'+escapeHtml(e.event_time)+'</span>';
-        if(e.case_id) detail += ' Case: <a style="cursor:pointer;color:var(--blue)">'+escapeHtml(e.case_id)+'</a>';
-        if(e.body) detail += '<div style="font-size:11px;margin-top:4px;color:var(--text-dim)">'+escapeHtml(e.body)+'</div>';
-      } else if(type === 'indicator'){
-        detail = '<span style="font-size:10px;color:var(--purple);margin-right:8px">'+escapeHtml(e.indicator_type)+'</span>';
-        if(e.value) detail += '<span style="font-size:10px;color:var(--blue);margin-right:12px">'+escapeHtml(e.value)+'</span>';
-        if(e.case_id) detail += ' Case: <a style="cursor:pointer;color:var(--blue)">'+escapeHtml(e.case_id)+'</a>';
-        if(e.description) detail += '<div style="font-size:11px;margin-top:4px;color:var(--text-dim)">'+escapeHtml(e.description)+'</div>';
-      } else if(type === 'account'){
-        var teamInfo = e.team ? ((e.team.number||'') + ' ' + ((e.team.type==='NCPT')?'NCPT':'CPT')).trim() : 'No Team';
-        detail = '<span style="font-size:10px;color:var(--text-muted);margin-right:12px">'+escapeHtml(e.rank)+' '+escapeHtml(e.work_role)+' '+escapeHtml(e.skill_level)+' '+escapeHtml(teamInfo)+'</span>';
-        if(e.email) detail += '<span style="font-size:10px;color:var(--text-muted);margin-right:8px">'+escapeHtml(e.email)+'</span>';
-        if(e.bio) detail += '<div style="font-size:11px;margin-top:4px;color:var(--text-dim)">'+escapeHtml(e.bio)+'</div>';
-      } else if(type === 'team'){
-        detail = '<span style="font-size:10px;color:var(--text-muted);margin-right:8px">'+escapeHtml(e.location||'')+'</span>';
-        if(e.description) detail += '<div style="font-size:11px;margin-top:4px;color:var(--text-dim)">'+escapeHtml(e.description)+'</div>';
-        if(e.notes) detail += '<div style="font-size:11px;margin-top:4px;color:var(--text-dim);font-style:italic">'+escapeHtml(e.notes)+'</div>';
-      }
-      resultsHTML += detail + '</div>';
-    });
-    resultsHTML += '</div>';
-  }
-  if(elasticCount > 0){
-    resultsHTML += '<div style="margin-bottom:16px"><div style="font-family:var(--display);font-size:12px;color:var(--green);letter-spacing:.1em;text-transform:uppercase;padding:6px 0;border-bottom:1px solid var(--green);margin-bottom:8px">Elastic Raw Logs ('+elasticCount+')</div>';
-    (d.elastic_matches||[]).forEach(function(m){
-      resultsHTML += '<div style="padding:8px 12px;border:1px solid rgba(76,175,111,.2);border-radius:2px;margin-bottom:6px;background:rgba(76,175,111,.03)"><span style="font-size:9px;color:var(--text-muted);margin-right:8px">'+escapeHtml(m.index)+'</span><span style="font-size:9px;color:var(--text-muted);margin-right:8px">'+escapeHtml(m.id)+'</span><span style="font-size:9px;color:var(--text-muted)">score: '+m.score+'</span><div style="font-size:11px;margin-top:4px;color:var(--text-dim);word-break:break-all">'+escapeHtml(m.sample)+'</div></div>';
-    });
-    resultsHTML += '</div>';
-  }
-  if(Object.keys(groups).length===0 && !elasticCount){
-    resultsHTML += '<div style="color:var(--text-muted);padding:20px;text-align:center;font-size:12px">No results for "'+escapeHtml(q)+'"</div>';
-  }
-  document.getElementById('searchResults').innerHTML = resultsHTML;
-}
-
-// ═══ INIT ═══
-async function init(){
-  try{
-    state.me = await api('/api/auth/me?token='+encodeURIComponent(state.token)).catch(()=>({read_only:true}));
-    if(state.me.read_only){
-      document.getElementById('readOnlyBanner').style.display='flex';
-      document.getElementById('currentUserBadge').textContent='Login';
-      return;
-    }
-    if(!isAdmin()){
-      document.getElementById('readOnlyBanner').textContent='Admin privileges required.';
-      document.getElementById('readOnlyBanner').style.display='flex';
-      return;
-    }
-    document.getElementById('readOnlyBanner').style.display='none';
-    document.getElementById('adminContent').style.display='';
-    document.getElementById('currentUserBadge').textContent = state.me.account.formatted_name||'Admin';
-    await loadAccountsOptions();
-    await Promise.all([loadAdminAccounts(), loadTeams(), loadStats(), loadAuditTrail()]);
-  } catch(e){ console.error(e); }
-}
-
-function isAdmin(){return state.me?.account?.privilege_level==='admin'}
-function escapeHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
-
-// ═══ TABS ═══
+// ============ TABS ============
 function switchTab(name){
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(t=>{t.style.display='none';});
+  document.querySelectorAll('.tab-content').forEach(t=>{t.classList.remove('active');});
   const el = document.getElementById('tab-'+name);
-  if(el) el.style.display = '';
-  const labels = {search:'Search',accounts:'Accounts',teams:'Teams',audit:'Audit Trail',pwreset:'Password Reset',agents:'Agent Management',settings:'Settings'};
+  if(el) el.classList.add('active');
+  const labels = {accounts:'Accounts',teams:'Teams',audit:'Audit Trail',pwreset:'Password Reset',agents:'Agent Management',settings:'Settings'};
   document.querySelectorAll('.tab-btn').forEach(b=>{
     if(b.textContent.trim() === labels[name]) b.classList.add('active');
   });
   if(name==='audit') loadAuditTrail();
   if(name==='agents') loadAgentCycle();
+  if(name==='settings') loadSettings();
 }
 
-// ═══ STATS ═══
+// ============ STATS ============
 async function loadStats(){
   try{
     const d=await api('/api/admin/overview?token='+encodeURIComponent(state.token)).catch(()=>null);
@@ -445,17 +356,15 @@ async function loadStats(){
   }catch(e){}
 }
 
-// ═══ ACCOUNTS ═══
+// ============ ACCOUNTS ============
 async function loadAccountsOptions(){
   ACCOUNT_OPTIONS=await api('/api/accounts/options').catch(()=>({}));
   TEAMS=await api('/api/teams').catch(()=>[]);
   updateRankOptionsFor('acct');
-  // Fill dropdowns
   const roleSel=document.getElementById('acctRole');
   if(roleSel) roleSel.innerHTML=(ACCOUNT_OPTIONS.work_roles||[]).map(r=>'<option>'+r+'</option>').join('');
   const teamSel=document.getElementById('acctTeamId');
   if(teamSel) teamSel.innerHTML='<option value="">(none)</option>'+TEAMS.map(t=>'<option value="'+t.id+'">'+(t.number||'')+' '+(t.team_type==='NCPT'?'NCPT':'CPT')+'</option>').join('');
-  // Team lead selects
   updateTeamSelectors();
 }
 function updateTeamSelectors(){
@@ -490,7 +399,7 @@ function editAccount(id){
   document.getElementById('acctPriv').value=a.privilege_level||'analyst';
   document.getElementById('acctEmail').value=a.email||'';
   document.getElementById('acctPhone').value=a.phone||'';
-  document.getElementById('acctBranch').value=a.service_branch||'';
+  document.getElementById('acctBranch').value=a.service_branch||'civilian';
   updateRankOptionsFor('acct');
   document.getElementById('acctRank').value=a.rank||'';
   document.getElementById('acctRole').value=a.work_role||'';
@@ -536,7 +445,7 @@ async function deleteAccount(id){
   await loadAdminAccounts();
 }
 
-// ═══ TEAMS ═══
+// ============ TEAMS ============
 async function loadTeams(){
   try{
     TEAMS=await api('/api/admin/teams-full?token='+encodeURIComponent(state.token)).catch(()=>[]);
@@ -596,6 +505,7 @@ async function saveTeam(){
   alert('Team saved');
   clearTeamForm();
   await loadTeams();
+  await loadAccountsOptions();
 }
 async function deleteTeam(id){
   if(!confirm('Delete this team?'))return;
@@ -603,12 +513,13 @@ async function deleteTeam(id){
   await loadTeams();
 }
 
-// ═══ AUDIT ═══
+// ============ AUDIT ============
 async function loadAuditTrail(){
   try{
     const rows=await api('/api/audit?token='+encodeURIComponent(state.token)).catch(()=>[]);
-    document.getElementById('auditList').innerHTML=(rows.data||rows||[]).slice(0,50).map(r=>
-      '<div class="item-row"><div class="item-info"><b>'+escapeHtml(r.action)+'</b> · <span style="color:var(--text-muted)">'+escapeHtml(r.actor_name||'system')+'</span><br><span style="font-size:10px;color:var(--text-muted)">'+(r.target_type?'→ '+r.target_type+'('+escapeHtml(r.target_id)+')':'')+' · '+compactTime(r.created_at)+'</span></div></div>'
+    const items = rows.data || rows || [];
+    document.getElementById('auditList').innerHTML = (items.length ? items.slice(0,100) : []).map(r=>
+      '<div class="audit-entry"><span class="audit-action">'+escapeHtml(r.action)+'</span> · '+escapeHtml(r.actor_name||'system')+' → '+(r.target_type?r.target_type+'('+escapeHtml(r.target_id)+')':'')+'<br><span class="audit-time">'+compactTime(r.created_at)+'</span></div>'
     ).join('')||'<div class="empty-msg">No audit entries</div>';
   }catch(e){}
 }
@@ -618,12 +529,13 @@ function compactTime(raw){
   return String(raw).slice(0,20);
 }
 
-// ═══ PASSWORD RESET ═══
+// ============ PASSWORD RESET ============
 async function requestPwReset(){
   try{
     const r=await api('/api/auth/password-reset-request',{method:'POST',body:JSON.stringify({username:document.getElementById('pwUser').value,method:document.getElementById('pwMethod').value})});
-    document.getElementById('pwResult').innerHTML='<span style="color:var(--green)">Code sent. Challenge ID: '+r.challenge_id+'</span>';
-    if(r.demo_code) document.getElementById('pwResult').innerHTML+='<br><span style="color:var(--amber)">Demo code: '+r.demo_code+'</span>';
+    let msg='Code sent. Challenge ID: <code>'+r.challenge_id+'</code>';
+    if(r.demo_code) msg+='<br>Demo code: <strong style="color:var(--amber)">'+r.demo_code+'</strong>';
+    document.getElementById('pwResult').innerHTML=msg;
   }catch(e){document.getElementById('pwResult').innerHTML='<span style="color:var(--red)">'+e.message+'</span>'}
 }
 async function verifyPwReset(){
@@ -631,45 +543,80 @@ async function verifyPwReset(){
     await api('/api/auth/password-reset-verify',{method:'POST',body:JSON.stringify({challenge_id:document.getElementById('pwChallengeId').value,code:document.getElementById('pwCode').value,new_password:document.getElementById('pwNewPassword').value})});
     alert('Password reset successful. Re-login required.');
     localStorage.removeItem('spotterToken'); location.reload();
-  }catch(e){alert('Failed: '+e.message)}
+  }catch(e){document.getElementById('pwVerifyResult').innerHTML='<span style="color:var(--red)">'+e.message+'</span>'}
 }
 
-// ═══ AGENT CYCLE ═══
+// ============ AGENT CYCLE ============
 async function loadAgentCycle(){
   try{
     const d=await api('/api/agents/cycle?token='+encodeURIComponent(state.token)).catch(()=>null);
     if(d) document.getElementById('agentCycleConfig').innerHTML=
-      '<div class="form-group"><label>Interval (seconds)</label><input id="cycleInterval" value="'+d.interval_seconds+'"></div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;align-items:end">'+
+      '<div class="form-group"><label>Interval (seconds)</label><input id="cycleInterval" value="'+d.interval_seconds+'" type="number" min="30"></div>'+
+      '<div class="form-group"><label>Max Concurrent</label><input id="cycleMaxConcurrent" value="'+d.max_concurrent+'" type="number" min="1"></div>'+
       '<div class="form-group"><label>Enabled</label><select id="cycleEnabled"><option value="true" '+(d.enabled?'selected':'')+'>Yes</option><option value="false" '+(d.enabled?'':'selected')+'>No</option></select></div>'+
-      '<button class="btn btn-sm" onclick="saveAgentCycle()">Save</button>';
+      '</div>'+
+      '<button class="btn btn-sm" onclick="saveAgentCycle()">Save Cycle Config</button>';
+    // Custom agents
+    const agents=await api('/api/agents/custom').catch(()=>[]);
+    document.getElementById('customAgentList').innerHTML=(agents||[]).map(a=>
+      '<div class="item-row"><div class="item-info"><b>'+escapeHtml(a.name)+'</b><br><span style="color:var(--text-muted);font-size:10px">'+escapeHtml(a.detection_focus||'')+' · tier '+escapeHtml(a.tier||'?')+' · matches: '+a.event_count+'</span></div><div class="item-actions">'+
+      '<button class="btn btn-sm" onclick="testCustomAgent(\''+a.id+'\')">Test</button>'+
+      '<button class="btn btn-sm" onclick="toggleCustomAgent(\''+a.id+'\','+!!a.enabled+')">'+(a.enabled?'Disable':'Enable')+'</button>'+
+      '<button class="btn btn-sm btn-danger" onclick="deleteCustomAgent(\''+a.id+'\')">Delete</button></div></div>'
+    ).join('')||'<div class="empty-msg">No custom agents. The built-in agents (PowerShell, LSASS, Sysmon Network, Threat Intel) run automatically on session launch and every cycle.</div>';
   }catch(e){}
 }
 async function saveAgentCycle(){
-  await api('/api/agents/cycle',{method:'POST',body:JSON.stringify({token:state.token,interval_seconds:parseInt(document.getElementById('cycleInterval')?.value||120),enabled:document.getElementById('cycleEnabled')?.value==='true'})});
+  await api('/api/agents/cycle',{method:'POST',body:JSON.stringify({token:state.token,interval_seconds:parseInt(document.getElementById('cycleInterval')?.value||120),enabled:document.getElementById('cycleEnabled')?.value==='true',max_concurrent:parseInt(document.getElementById('cycleMaxConcurrent')?.value||4)})});
   alert('Agent cycle updated');
 }
+async function testCustomAgent(id){ const r=await api('/api/agents/custom/'+id+'/test',{method:'POST'}); alert('Agent test matches: '+(r.match_count||0)); }
+async function toggleCustomAgent(id,on){ await api('/api/agents/custom/'+id+(on?'/enable':'/disable'),{method:'POST'}); await loadAgentCycle(); }
+async function deleteCustomAgent(id){ if(!confirm('Archive this custom agent?'))return; await api('/api/agents/custom/'+id,{method:'DELETE'}); await loadAgentCycle(); }
 
-// ═══ SETTINGS ═══
+// ============ SETTINGS ============
 async function loadSettings(){
   try{
     const d=await api('/api/setup/config').catch(()=>{});
     const tw=document.getElementById('setTwofa'); if(tw)tw.value=String(!!d.security?.twofa_required);
     const kb=document.getElementById('setKibanaUrl'); if(kb)kb.value=d.kibana?.url||'';
+    // Enrichment
+    const oc=document.getElementById('setOpenCtiUrl'); if(oc)oc.value=d.opencti?.url||'';
+    const ock=document.getElementById('setOpenCtiKey'); if(ock)ock.value=d.opencti?.apikey||'';
+    const vtk=document.getElementById('setVtKey'); if(vtk)vtk.value=d.virustotal?.apikey||'';
+    // SMTP/SMS
+    const smtp=document.getElementById('setSmtpUrl'); if(smtp)smtp.value=d.smtp?.url||'';
+    const sms=document.getElementById('setSmsUrl'); if(sms)sms.value=d.sms?.webhook_url||'';
   }catch(e){}
 }
 async function saveSecuritySettings(){
   await api('/api/setup/config',{method:'POST',body:JSON.stringify({security:{twofa_required:document.getElementById('setTwofa').value==='true'}})});
+  alert('Security settings saved');
 }
 async function saveKibanaSettings(){
   await api('/api/setup/config',{method:'POST',body:JSON.stringify({kibana:{url:document.getElementById('setKibanaUrl').value}})});
+  alert('Kibana URL saved');
+}
+async function saveEnrichmentSettings(){
+  await api('/api/setup/config',{method:'POST',body:JSON.stringify({opencti:{url:document.getElementById('setOpenCtiUrl').value,apikey:document.getElementById('setOpenCtiKey').value},virustotal:{apikey:document.getElementById('setVtKey').value}})});
+  alert('Enrichment settings saved');
+}
+async function saveDeliverySettings(){
+  await api('/api/setup/config',{method:'POST',body:JSON.stringify({smtp:{url:document.getElementById('setSmtpUrl').value},sms:{webhook_url:document.getElementById('setSmsUrl').value}})});
+  alert('Delivery settings saved');
 }
 
-// ═══ LOGIN ═══
-function openLoginFromAdmin(){document.getElementById('adminLoginPanel').style.display='block'}
+// ============ LOGIN ============
+function isAdmin(){return state.me?.account?.privilege_level==='admin'}
+function escapeHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+function openLoginFromAdmin(){document.getElementById('adminLoginPanel').classList.add('open')}
+function closeLoginFromAdmin(){document.getElementById('adminLoginPanel').classList.remove('open')}
 async function adminLogin(){
   try{
     const d=await api('/api/auth/login',{method:'POST',body:JSON.stringify({username:document.getElementById('loginUser').value,password:document.getElementById('loginPass').value,method:'email'})});
-    if(d.token){state.token=d.token; localStorage.setItem('spotterToken',d.token); document.getElementById('adminLoginPanel').style.display='none'; location.reload(); return;}
+    if(d.token){state.token=d.token; localStorage.setItem('spotterToken',d.token); closeLoginFromAdmin(); location.reload(); return;}
     document.getElementById('adminLoginResult').innerHTML='<input id="adminLoginCode" value="'+(d.demo_code||'')+'" placeholder="Code"><button class="btn btn-sm" onclick="verifyAdminLogin(\''+d.challenge_id+'\')">Verify</button>';
   }catch(e){document.getElementById('adminLoginResult').innerHTML='<span style="color:var(--red)">'+e.message+'</span>'}
 }
@@ -677,7 +624,30 @@ async function verifyAdminLogin(id){
   const d=await api('/api/auth/verify',{method:'POST',body:JSON.stringify({challenge_id:id,code:document.getElementById('adminLoginCode').value})});
   state.token=d.token; localStorage.setItem('spotterToken',d.token); location.reload();
 }
-function openChatFromAdmin(){window.open('/operations.html?view='+encodeURIComponent(state.me?.account?.work_role?.includes('Commander')?'commander':'analyst'),'_blank')}
+
+// ============ INIT ============
+async function init(){
+  try{
+    state.me = await api('/api/auth/me?token='+encodeURIComponent(state.token)).catch(()=>({read_only:true}));
+    if(state.me.read_only){
+      document.getElementById('readOnlyBanner').style.display='flex';
+      document.getElementById('currentUserBadge').textContent='Login';
+      return;
+    }
+    if(!isAdmin()){
+      document.getElementById('readOnlyBanner').textContent='Admin privileges required.';
+      document.getElementById('readOnlyBanner').style.display='flex';
+      return;
+    }
+    document.getElementById('readOnlyBanner').style.display='none';
+    document.getElementById('adminContent').style.display='';
+    document.getElementById('currentUserBadge').textContent = state.me.account.formatted_name||'Admin';
+    await loadAccountsOptions();
+    await Promise.all([loadAdminAccounts(), loadTeams(), loadStats()]);
+    // Load settings if on settings tab or default
+    loadSettings();
+  } catch(e){ console.error(e); }
+}
 
 init().catch(console.error);
 </script>

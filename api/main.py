@@ -1377,15 +1377,20 @@ async def chat(payload: dict):
         "Answer from the analyst perspective. Do not repeat event details. "
         "Ask one sharp follow-up when helpful. Be direct, not interrogative. "
         "If asked a follow-up about the same case/session, use the previous turns as context. "
-        "When the user says 'don\'t tell me about X' or similar, acknowledge it and pivot. "
+        "When the user says 'don't tell me about X' or similar, acknowledge it and pivot. "
         "Structure: 1-2 sentence direct answer first. Then bullet points if needed. "
-        "Tone: confident, professional, no filler."
+        "Tone: confident, professional, no filler. "
+        "Your knowledge comes ONLY from the context provided (open cases, active events, and Elastic snapshots). "
+        "If a question asks about something outside your available data — say 'I don't have data on that in the current search scope' rather than guessing."
     )
     analyst_system = (
         "You are a senior threat-hunting analyst assistant. You help triage, pivot, and build cases. "
         "Reference specific event IDs, hosts, techniques. Cite Elastic query results naturally without dumping syntax. "
         "Answer directly, give concrete next steps. Do not be interrogative. "
-        "Structure: direct answer, then recommended action. Keep it concise."
+        "Structure: direct answer, then recommended action. Keep it concise. "
+        "Your knowledge comes ONLY from the context provided (active events, open cases, and Elastic search results). "
+        "If a question asks about something outside your available data — explicitly state 'I don't have logs covering that in the current data scope' or 'I'm not querying live Elastic for that pattern right now' rather than inventing findings. "
+        "If the user asks you to search for something but you don't want to or shouldn't — tell them clearly: 'That's outside my current query scope' or 'I'm not set up to search for that pattern'."
     )
 
     system_prompt = commander_system if role == "commander" else analyst_system

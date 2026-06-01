@@ -1213,12 +1213,8 @@ body::before {
   </div>
 
   <div class="header-center">
-    <button class="role-btn active" id="analystBtn" onclick="switchView('analyst')">Analyst View</button>
-    <button class="role-btn commander-nav" id="commanderBtn" onclick="switchView('commander')">Commander View</button>
-    <button class="role-btn commander-nav" onclick="goToKibana()">Go To Kibana</button>
-    <button class="role-btn" onclick="openChat()">Chat</button>
-    <button class="role-btn admin-btn" onclick="openAccounts()">Admin Panel</button>
-    <button class="role-btn admin-btn" onclick="openOpsAdmin()">Admin Tools</button>
+    <button class="role-btn active" id="analystBtn">Analyst View</button>
+    <button class="role-btn" onclick="window.location.href='/admin.html'">Admin</button>
   </div>
 
   <div class="header-right">
@@ -1268,111 +1264,9 @@ body::before {
 </div>
 
 
-<!-- ════════════════════════════════════════
-     COMMANDER VIEW
-════════════════════════════════════════ -->
-<div class="view" id="commanderView">
-  <div class="cmd-header-bar">
-    <div class="cmd-title">Operational Summary</div>
-    <div class="cmd-timestamp" id="cmdTimestamp"></div>
-  </div>
-  <div class="cmd-body">
+<!-- COMMANDER VIEW REMOVED → Admin Console at /admin.html handles leadership operations -->
 
-    <!-- KPI Row -->
-    <div class="kpi-row">
-      <div class="kpi-card amber-accent">
-        <div class="kpi-label">ASOM Lines Completed</div>
-        <div class="kpi-value amber" id="kpiAsom">0</div>
-        <div class="kpi-sub"><span class="kpi-delta up">+3</span> since 0600</div>
-      </div>
-      <div class="kpi-card red-accent">
-        <div class="kpi-label">Threat Actors Found</div>
-        <div class="kpi-value red" id="kpiActors">0</div>
-        <div class="kpi-sub"><span class="kpi-delta up">+1</span> new today</div>
-      </div>
-      <div class="kpi-card blue-accent">
-        <div class="kpi-label">Active Cases</div>
-        <div class="kpi-value blue" id="kpiActiveCases">0</div>
-        <div class="kpi-sub">2 awaiting analyst</div>
-      </div>
-      <div class="kpi-card green-accent">
-        <div class="kpi-label">Completed Cases</div>
-        <div class="kpi-value green" id="kpiCompletedCases">0</div>
-        <div class="kpi-sub"><span class="kpi-delta dn">+2</span> closed today</div>
-      </div>
-      <div class="kpi-card purple-accent">
-        <div class="kpi-label">Events (24h)</div>
-        <div class="kpi-value purple" id="kpiEvents">0</div>
-        <div class="kpi-sub">4 critical · 8 high</div>
-      </div>
-    </div>
-
-    <!-- Analyst Status Row -->
-    <div class="analyst-status-row" id="analystStatusRow"></div>
-
-    <!-- Main grid: ASOM + Threat Actors -->
-    <div class="cmd-grid">
-      <!-- ASOM Progress -->
-      <div class="cmd-card">
-        <div class="cmd-card-header">
-          <div class="cmd-card-title amber-bar">ASOM Lines</div>
-          <span style="font-family:var(--mono);font-size:10px;color:var(--text-muted)" id="asomCountLabel">0 / 0 complete</span>
-        </div>
-        <div class="cmd-card-body">
-          <div class="asom-line-list" id="asomList"></div>
-        </div>
-      </div>
-
-      <!-- Threat Actors -->
-      <div class="cmd-card">
-        <div class="cmd-card-header">
-          <div class="cmd-card-title red-bar">Threat Actors</div>
-          <span style="font-family:var(--mono);font-size:10px;color:var(--red)" id="actorCountLabel">0 identified</span>
-        </div>
-        <div class="cmd-card-body">
-          <div class="actor-list" id="actorList"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Bottom grid: Agent Feed + Events Table -->
-    <div class="cmd-grid">
-      <!-- Agent Activity Feed -->
-      <div class="cmd-card">
-        <div class="cmd-card-header">
-          <div class="cmd-card-title blue-bar">Agent Activity Feed</div>
-          <div class="live-badge"><span class="dot green"></span> Live</div>
-        </div>
-        <div class="cmd-card-body">
-          <div class="agent-feed" id="agentFeed"></div>
-        </div>
-      </div>
-
-      <!-- Events by Severity -->
-      <div class="cmd-card">
-        <div class="cmd-card-header">
-          <div class="cmd-card-title green-bar">Events by Agent</div>
-        </div>
-        <div class="cmd-card-body">
-          <table class="events-table" id="eventsTable">
-            <thead>
-              <tr>
-                <th>Agent</th>
-                <th>Events</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody id="eventsTableBody"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-  </div>
-</div>
-
-
-<!-- ════ SHARED BOTTOM BAR (persists in both Analyst and Commander views) ════ -->
+<!-- ════ SHARED BOTTOM BAR (Analyst view only) ════ -->
 <div class="shared-bottom-bar" id="sharedBottomBar" style="position:fixed;bottom:0;left:0;right:0;z-index:100;">
   <div class="bottom-stats">
     <div class="bottom-stat">Events <span class="bottom-stat-val amber" id="statEvents">0</span></div>
