@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spotter-Shooter // Search & Directory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;600;700;800&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0d0f12;--surface:#15191c;--surface2:#1c2024;--border:#2a3036;--text:#d4dde4;--text-dim:#52606a;--text-muted:#3a4e58;--amber:#e8a427;--amber-dim:rgba(232,164,39,.15);--amber-glow:rgba(232,164,39,.08);--red:#e85238;--green:#4caf6f;--blue:#4a9eca;--purple:#9c72e6;--mono:'Share Tech Mono',monospace;--body:'Barlow',sans-serif;--display:'Barlow Condensed',sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:100vh}
+/* Header */
+.header{display:flex;align-items:center;justify-content:space-between;padding:0 28px;height:52px;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;top:0;z-index:200}
+.logo{display:flex;align-items:baseline;gap:10px}
+.logo-mark{font-family:var(--display);font-weight:700;font-size:18px;letter-spacing:.08em;color:var(--amber);text-transform:uppercase}
+.logo-sep{color:var(--text-dim)}.logo-sub{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.12em;text-transform:uppercase}
+.header-actions{display:flex;gap:12px;align-items:center}
+.header-btn{font-family:var(--display);font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;padding:6px 14px;border:1px solid var(--border);background:transparent;color:var(--text-dim);cursor:pointer;border-radius:2px;text-decoration:none;transition:all .2s}
+.header-btn:hover{color:var(--text);border-color:var(--text-dim)}.header-btn.active{color:var(--amber);border-color:var(--amber)}
+.hunt-name{font-family:var(--display);font-size:13px;font-weight:600;letter-spacing:.08em;color:var(--text);cursor:pointer}
+/* Banner */
+.readonly-banner{padding:10px 18px;background:var(--amber-glow);border-bottom:1px solid var(--amber-dim);color:var(--amber);font-family:var(--mono);font-size:11px;text-transform:uppercase;display:flex;gap:10px;align-items:center;justify-content:center;cursor:pointer}
+.readonly-banner a{color:var(--blue);text-decoration:underline}
+/* Main */
+.search-container{max-width:1100px;margin:0 auto;padding:28px 28px 28px}
+.search-box{margin-bottom:24px;position:relative}
+.search-input{width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:14px 18px 14px 42px;font-family:var(--mono);font-size:14px;border-radius:4px;outline:none;transition:border-color .15s}
+.search-input:focus{border-color:var(--amber)}
+.search-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--text-dim);font-size:16px}
+.search-hint{font-family:var(--mono);font-size:10px;color:var(--text-muted);margin-top:6px;letter-spacing:.06em}
+.search-hint code{color:var(--amber)}
+/* Results */
+.results-summary{font-family:var(--mono);font-size:11px;color:var(--text-muted);margin-bottom:16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.result-type{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+.result-type.cases{background:rgba(74,158,202,.15);color:var(--blue)}.result-type.timeline{background:rgba(232,164,39,.15);color:var(--amber)}
+.result-type.indicators{background:rgba(232,82,56,.15);color:var(--red)}.result-type.accounts{background:rgba(156,114,230,.15);color:var(--purple)}
+.result-type.teams{background:rgba(76,175,111,.15);color:var(--green)}.result-type.elastic{background:rgba(82,136,160,.15);color:#5288a0}
+.result-card{background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:14px 16px;margin-bottom:10px;cursor:default}
+.result-card:hover{border-color:var(--amber-dim)}
+.result-card-header{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.result-card-title{font-family:var(--display);font-size:13px;font-weight:600;letter-spacing:.06em;color:var(--text)}
+.result-card-meta{font-family:var(--mono);font-size:9px;color:var(--text-muted)}
+.result-card-body{color:var(--text-dim);font-size:12px;line-height:1.5}
+.result-card-body em{color:var(--amber);font-style:normal}
+.result-card-actions{margin-top:8px;display:flex;gap:6px;align-items:center}
+.result-btn{font-family:var(--mono);font-size:9px;background:var(--surface2);border:1px solid var(--border);color:var(--text-dim);padding:3px 8px;cursor:pointer;border-radius:2px;transition:all .15s}
+.result-btn:hover{color:var(--amber);border-color:var(--amber-dim);background:var(--amber-glow)}
+/* Login panel */
+.login-panel{position:fixed;right:34px;bottom:84px;z-index:300;background:var(--surface);border:1px solid var(--border);padding:16px;width:320px;display:none;box-shadow:0 0 20px rgba(0,0,0,.4)}
+.login-panel.open{display:block}
+/* Message compose */
+.msg-panel{position:fixed;right:34px;bottom:84px;z-index:300;background:var(--surface);border:1px solid var(--amber);padding:16px;width:360px;display:none;box-shadow:0 0 20px rgba(232,164,39,.1)}
+.msg-panel.open{display:block}
+.form-group{margin-bottom:10px}
+.form-group label{display:block;font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-bottom:3px;letter-spacing:.08em;text-transform:uppercase}
+.form-group select,.form-group textarea,.form-group input{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:7px 10px;font-family:var(--mono);font-size:11px;border-radius:2px}
+.form-group textarea{min-height:80px;resize:vertical}
+.btn{font-family:var(--display);font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;padding:8px 20px;border:1px solid var(--amber);background:transparent;color:var(--amber);cursor:pointer;border-radius:2px;transition:all .2s}
+.btn:hover{background:var(--amber);color:#0a0c0e}
+/* Scrollbar */
+::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+</style></head>
+<body>
+<header class="header">
+  <div class="logo"><span class="logo-mark">Spotter-Shooter</span><span class="logo-sep"> // </span><span class="logo-sub">Search &amp; Directory</span></div>
+  <div class="header-actions">
+    <a class="header-btn" href="/operations.html">Ops Console</a>
+    <a class="header-btn" href="/admin.html">Admin</a>
+    <div id="userBadge" class="hunt-name" onclick="toggleLogin()" style="cursor:pointer">Login</div>
+  </div>
+</header>
+<div class="readonly-banner" id="readOnlyBanner" style="display:none"><a onclick="toggleLogin()">Login</a> or <a onclick="openCreateAccount()">Create an Account</a> to search and message users.</div>
+
+<div class="search-container" id="searchContent" style="display:none">
+  <div class="search-box">
+    <span class="search-icon">◈</span>
+    <input class="search-input" id="searchInput" type="search" placeholder="Search cases, alerts, indicators, people, teams, Elastic logs..." autofocus>
+    <div class="search-hint"><code>Enter</code> to search · finds across all indices and directories</div>
+  </div>
+  <div class="results-summary" id="resultsSummary" style="display:none"></div>
+  <div id="resultsContainer"></div>
+</div>
+
+<!-- Login -->
+<div class="login-panel" id="loginPanel">
+  <div style="font-family:var(--display);font-size:14px;color:var(--amber);margin-bottom:12px;text-transform:uppercase;letter-spacing:.08em">Login</div>
+  <div class="form-group"><input id="loginUser" placeholder="Username / Email"></div>
+  <div class="form-group"><input id="loginPass" type="password" placeholder="Password"></div>
+  <button class="btn" onclick="login()" style="width:100%">Login</button>
+  <div id="loginResult" style="margin-top:8px"></div>
+  <div style="text-align:center;margin-top:12px"><a style="color:var(--blue);font-family:var(--mono);font-size:10px;cursor:pointer" onclick="openCreateAccount()">Create Account →</a></div>
+</div>
+
+<!-- Create Account -->
+<div class="login-panel" id="createAccountPanel">
+  <div style="font-family:var(--display);font-size:14px;color:var(--amber);margin-bottom:12px;text-transform:uppercase;letter-spacing:.08em">Create Account</div>
+  <div id="createAccountBody"></div>
+</div>
+
+<!-- Message Compose -->
+<div class="msg-panel" id="msgCompose">
+  <div class="case-lab-head" style="padding:8px 0;margin-bottom:10px;border-bottom:1px solid var(--border)">
+    <div style="font-family:var(--display);font-size:13px;color:var(--amber);text-transform:uppercase;letter-spacing:.08em">Message <span id="msgRecipientName"></span></div>
+    <button class="case-close" onclick="closeMsgCompose()" style="font-size:14px;padding:0 4px">✕</button>
+  </div>
+  <div class="form-group"><label>Subject</label><input id="msgSubject" placeholder="Subject (optional)"></div>
+  <div class="form-group"><label>Body</label><textarea id="msgBody" placeholder="Your message..."></textarea></div>
+  <button class="btn" onclick="sendMessage()" style="width:100%">Send Message</button>
+  <div id="msgResult" style="margin-top:8px"></div>
+</div>
+
+<script>
+const BASE = '';
+let state = {token: localStorage.getItem('spotterToken')||'', me:null, allUsers:[]};
+let searchTimeout = null;
+
+async function api(path, opts={}){
+  opts.headers = {accept:'application/json', ...(opts.body instanceof FormData?{}:{'Content-Type':'application/json'}), ...opts.headers};
+  const res = await fetch(BASE+path, opts);
+  if(!res.ok){const t=await res.text().catch(()=>'');throw new Error('HTTP '+res.status+': '+t.slice(0,200))}
+  const body = await res.json();
+  if(!body.success)throw new Error(body.error||'API error');
+  return body.data;
+}
+
+function escapeHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+async function init(){
+  try{
+    state.me = await api('/api/auth/me?token='+encodeURIComponent(state.token)).catch(()=>({read_only:true}));
+    if(state.me.read_only){
+      document.getElementById('readOnlyBanner').style.display='flex';
+      document.getElementById('userBadge').textContent='Login';
+      return;
+    }
+    document.getElementById('readOnlyBanner').style.display='none';
+    document.getElementById('searchContent').style.display='';
+    document.getElementById('userBadge').textContent = state.me.account?.formatted_name||state.me.account?.display_name||'User';
+    // Load users for search
+    try{state.allUsers = await api('/api/directory?token='+encodeURIComponent(state.token)).catch(()=>[]);}catch{}
+    // Focus input
+    document.getElementById('searchInput').focus();
+    // Auto-search on type
+    document.getElementById('searchInput').addEventListener('keydown', function(e){if(e.key==='Enter'){e.preventDefault();runSearch()}});
+    document.getElementById('searchInput').addEventListener('input', function(e){
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(()=>{runSearch()}, 250);
+    });
+  }catch(e){console.error(e)}
+}
+
+// ═══ SEARCH ═══
+async function runSearch(){
+  const q = document.getElementById('searchInput').value.trim();
+  const container = document.getElementById('resultsContainer');
+  const summary = document.getElementById('resultsSummary');
+  if(!q){container.innerHTML='';summary.style.display='none';return;}
+
+  try{
+    const d = await api('/api/search?q='+encodeURIComponent(q)+'&limit=100&token='+encodeURIComponent(state.token));
+    const results = d.results||[];
+    const tc = d.type_counts||{};
+
+    summary.style.display='flex';
+    let badgeHTML= `<span>${results.length} results for '${escapeHtml(q)}'</span>`;
+    for(const [type,count] of Object.entries(tc)){
+      badgeHTML += `<span class="result-type ${type}">${type} (${count})</span>`;
+    }
+    summary.innerHTML = badgeHTML;
+
+    if(!results.length){
+      container.innerHTML = '<div style="padding:40px;text-align:center;font-family:var(--mono);font-size:12px;color:var(--text-muted)">No results found</div>';
+      return;
+    }
+
+    container.innerHTML = results.map(r=>{
+      let header='', body='', actions='';
+      if(r.type==='case'){
+        header=`<span class="result-card-title">${escapeHtml(r.case_id)} // ${escapeHtml(r.score_name)}</span>`;
+        body=`<div style="margin-top:4px"><span class="result-card-meta">Status: ${escapeHtml(r.status)} · Owner: ${escapeHtml(r.owner)}</span></div>`;
+        if(r.bluf)body+=`<div style="margin-top:6px">${highlightTerms(escapeHtml(r.bluf.slice(0,200)), q)}</div>`;
+        actions=`<span class="result-btn" onclick="openCase('${r.id||r.case_id}')">Open Case</span>`;
+      }else if(r.type==='timeline'){
+        header=`<span class="result-card-title">${escapeHtml(r.title)}</span><span class="result-card-meta">· ${escapeHtml(r.entry_type)} · ${escapeHtml(r.actor_name||'system')}</span>`;
+        body=highlightTerms(escapeHtml(r.body||'').slice(0,200), q);
+      }else if(r.type==='indicator'){
+        header=`<span class="result-card-title">${escapeHtml(r.indicator_type)}:${escapeHtml(r.value)}</span>`;
+        body=highlightTerms(escapeHtml(r.description||'').slice(0,200), q);
+      }else if(r.type==='account'){
+        header=`<span class="result-card-title">${escapeHtml(r.name)}</span>`;
+        let meta=[];if(r.rank)meta.push(escapeHtml(r.rank));if(r.role)meta.push(escapeHtml(r.role));if(r.team)meta.push(escapeHtml(r.team));
+        body=`<span class="result-card-meta">${meta.join(' · ')||'No details'}</span>`;
+        if(r.bio)body+=`<div style="margin-top:4px">${highlightTerms(escapeHtml(r.bio.slice(0,200)), q)}</div>`;
+        actions=`<span class="result-btn" onclick="openMsgCompose('${r.id}','${escapeHtml(r.name)}')">Message</span>`;
+      }else if(r.type==='team'){
+        header=`<span class="result-card-title">${escapeHtml(r.team_display||r.name)}</span>`;
+        body=`<span class="result-card-meta">${escapeHtml(r.location||'No location')}${r.type?' · '+escapeHtml(r.type):''}</span>`;
+      }else if(r.type==='elastic'){
+        header=`<span class="result-card-title">${escapeHtml(r.index)}</span><span class="result-card-meta">· ID: ${escapeHtml(r.doc_id)} · Score: ${r._score??''}</span>`;
+        body=highlightTerms(escapeHtml((r.sample||'').slice(0,400)), q);
+      }
+      return '<div class="result-card"><div class="result-card-header">'+header+'</div><div class="result-card-body">'+body+'</div><div class="result-card-actions">'+actions+'</div></div>';
+    }).join('');
+  }catch(e){
+    container.innerHTML = '<div style="padding:20px;color:var(--red);font-family:var(--mono);font-size:11px">Search failed: '+escapeHtml(e.message)+'</div>';
+  }
+}
+
+function highlightTerms(text, query){
+  if(!query)return text;
+  const terms=query.toLowerCase().split(/\s+/).filter(t=>t.length>1);
+  let html=text;
+  terms.forEach(t=>{
+    const rx=new RegExp('('+t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi');
+    html=html.replace(rx,'<em>$1</em>');
+  });
+  return html;
+}
+
+// ═══ ACTIONS ═══
+function openCase(id){
+  window.open('/operations.html?view=analyst','_blank');
+  setTimeout(()=>{
+    const w=window.open('/operations.html','_blank');
+    // In a real app, you'd pass URL params to auto-open
+  }, 100);
+}
+
+// ═══ MESSAGING ═══
+let msgRecipient={id:'',name:''};
+function openMsgCompose(id,name){
+  if(!state.token||state.me.read_only){alert('Login first');toggleLogin();return;}
+  msgRecipient={id,name};
+  document.getElementById('msgRecipientName').textContent=name;
+  document.getElementById('msgSubject').value='';document.getElementById('msgBody').value='';
+  document.getElementById('msgResult').innerHTML='';
+  document.getElementById('msgCompose').classList.add('open');
+}
+function closeMsgCompose(){document.getElementById('msgCompose').classList.remove('open')}
+async function sendMessage(){
+  try{
+    await api('/api/messages',{method:'POST',body:JSON.stringify({
+      token:state.token,recipient_id:msgRecipient.id,
+      subject:document.getElementById('msgSubject').value,
+      body:document.getElementById('msgBody').value
+    })});
+    document.getElementById('msgResult').innerHTML='<span style="color:var(--green)">Message sent!</span>';
+    setTimeout(closeMsgCompose, 1200);
+  }catch(e){document.getElementById('msgResult').innerHTML='<span style="color:var(--red)">Failed: '+escapeHtml(e.message)+'</span>'}
+}
+
+// ═══ LOGIN ═══
+function toggleLogin(){const p=document.getElementById('loginPanel');p.classList.toggle('open')}
+async function login(){
+  try{
+    const d=await api('/api/auth/login',{method:'POST',body:JSON.stringify({username:document.getElementById('loginUser').value,password:document.getElementById('loginPass').value,method:'email'})});
+    if(d.token){localStorage.setItem('spotterToken',d.token);state.token=d.token;location.reload();return;}
+    document.getElementById('loginResult').innerHTML='<input id="loginCode" value="'+(d.demo_code||'')+'" placeholder="Code"><button class="btn" onclick="verifyLogin(\''+d.challenge_id+'\')">Verify</button>';
+  }catch(e){document.getElementById('loginResult').innerHTML='<span style="color:var(--red)">'+e.message+'</span>'}
+}
+async function verifyLogin(id){
+  const d=await api('/api/auth/verify',{method:'POST',body:JSON.stringify({challenge_id:id,code:document.getElementById('loginCode').value})});
+  localStorage.setItem('spotterToken',d.token);location.reload();
+}
+
+function openCreateAccount(){
+  document.getElementById('createAccountPanel').classList.add('open');
+  document.getElementById('loginPanel').classList.remove('open');
+  api('/api/accounts/options').then(opts=>{
+    document.getElementById('createAccountBody').innerHTML=
+      '<div class="form-group"><input id="newFirst" placeholder="First Name"></div>'+
+      '<div class="form-group"><input id="newLast" placeholder="Last Name"></div>'+
+      '<div class="form-group"><input id="newDisplay" placeholder="Display Name (optional)"></div>'+
+      '<div class="form-group"><input id="newUser" placeholder="Username"></div>'+
+      '<div class="form-group"><input id="newPass" type="password" placeholder="Password"></div>'+
+      '<div class="form-group"><input id="newEmail" placeholder="Email (optional)"></div>'+
+      '<div class="form-group"><input id="newPhone" placeholder="Phone (optional)"></div>'+
+      '<div class="form-group"><label>Branch</label><select id="newBranch">'+(Object.keys(opts.ranks||{}).map(b=>'<option value="'+b+'">'+b+'</option>').join(''))+'</select></div>'+
+      '<div class="form-group"><label>Work Role</label><select id="newRole">'+(opts.work_roles||[]).map(r=>'<option>'+r+'</option>').join('')+'</select></div>'+
+      '<button class="btn" onclick="submitCreateAccount()" style="width:100%">Create Account</button>'+
+      '<div style="margin-top:8px;font-family:var(--mono);font-size:10px;color:var(--text-muted)">Log in with your new account after creation.</div>';
+    const b=document.getElementById('newBranch');
+    if(b){b.onchange=()=>{const ranks=opts.ranks?.[b.value]||[];const rs=document.getElementById('newRank');if(rs)rs.innerHTML=ranks.map(r=>'<option>'+r+'</option>').join('')}};
+    setTimeout(()=>{
+      if(!document.getElementById('newRank')){
+        const cg=document.createElement('div');cg.className='form-group';cg.innerHTML='<label>Rank</label><select id="newRank"></select>';
+        b.parentNode.insertBefore(cg,b.nextElementSibling);
+        b.onchange();
+      }
+    },50);
+  }).catch(()=>{});
+}
+function submitCreateAccount(){
+  const team=document.getElementById('newTeamId');
+  api('/api/accounts',{method:'POST',body:JSON.stringify({
+    first_name:document.getElementById('newFirst').value,
+    last_name:document.getElementById('newLast').value,
+    display_name:document.getElementById('newDisplay').value,
+    username:document.getElementById('newUser').value,
+    password:document.getElementById('newPass').value,
+    email:document.getElementById('newEmail').value,
+    phone:document.getElementById('newPhone').value,
+    privilege_level:'analyst',
+    service_branch:document.getElementById('newBranch').value,
+    rank:document.getElementById('newRank')?.value||'',
+    work_role:document.getElementById('newRole').value,
+    skill_level:'Basic'
+  })}).then(()=>{document.getElementById('createAccountPanel').classList.remove('open');toggleLogin();}).catch(e=>alert('Failed: '+e.message));
+}
+
+init().catch(console.error);
+</script>
+</body></html>

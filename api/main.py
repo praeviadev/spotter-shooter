@@ -384,8 +384,13 @@ async def openrouter_agent_summary(agent: str, evidence: dict, severity: str = "
 
 
 @app.get("/admin.html")
-async def admin_page():
+async def admin():
     return FileResponse(FRONTEND / "admin.html")
+
+
+@app.get("/search.html")
+async def search_page():
+    return FileResponse(FRONTEND / "search.html")
 
 
 @app.get("/api/admin/accounts")
@@ -1615,6 +1620,32 @@ async def ws(ws: WebSocket, session_id: str):
 # ═══════════════════════════════════════════════════════════
 # FULL TEXT SEARCH
 # ═══════════════════════════════════════════════════════════
+
+@app.get("/api/directory")
+async def api_directory(token: str = ""):
+    """Public directory - all logged-in users can search for people to message. Admin-only fields are hidden."""
+    actor = await get_actor(await P(), token)
+    if not token:
+        return E([])  # Anonymous users see no directory
+    rows = await (await P()).fetch(
+        "select a.id,a.display_name,a.username,a.rank,a.service_branch,a.work_role,a.skill_level,a.team,a.bio,a.team_id,a.email,a.phone,t.name as team_name,t.number as team_number,t.team_type from accounts a left join teams t on t.id=a.team_id order by a.display_name"
+    )
+    result = []
+    for r in rows:
+        entry = {
+            "id": str(r["id"]),
+            "name": r["display_name"] or r["username"] or "",
+            "rank": r["rank"] or "",
+            "branch": r["service_branch"] or "",
+            "role": r["work_role"] or "",
+            "skill": r["skill_level"] or "",
+            "team": r["team_name"] or r["team"] or "",
+            "team_display": team_display(r) if r.get("team_number") or r.get("team_type") else (r["team"] or ""),
+            "bio": r["bio"] or "",
+        }
+        result.append(entry)
+    return E(result)
+
 @app.get("/api/search")
 async def full_text_search(q: str = "", limit: int = 30, token: str = ""):
     """Search across cases, timeline, indicators, accounts, teams."""
