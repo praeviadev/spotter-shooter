@@ -250,6 +250,12 @@ body::before {
 .filter-chip.active { background: var(--surface3); border-color: var(--amber-dim); color: var(--amber); }
 .filter-chip.crit { border-color: var(--red-dim); color: var(--red); background: var(--red-glow); }
 .filter-chip.high-f { border-color: var(--amber-dim); color: var(--amber); background: var(--amber-glow); }
+.alert-search-wrap { padding: 10px 12px; border-bottom: 1px solid var(--border); background: var(--surface); display: grid; grid-template-columns: 1fr auto; gap: 8px; flex-shrink: 0; }
+.alert-search { width: 100%; background: #050607; color: var(--text); border: 1px solid var(--border); padding: 8px 10px; font-family: var(--mono); font-size: 11px; letter-spacing: .03em; outline: none; }
+.alert-search:focus { border-color: var(--amber-dim); box-shadow: 0 0 0 1px var(--amber-dim); }
+.alert-search-clear { background: var(--surface2); border: 1px solid var(--border); color: var(--text-dim); font-family: var(--mono); font-size: 10px; text-transform: uppercase; padding: 0 10px; cursor: pointer; }
+.alert-search-clear:hover { color: var(--amber); border-color: var(--amber-dim); }
+.alert-search-hint { padding: 0 12px 9px; color: var(--text-muted); background: var(--surface); border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 9px; letter-spacing: .05em; text-transform: uppercase; flex-shrink: 0; }
 
 .event-list-scroll {
   overflow-y: auto;
@@ -1106,6 +1112,11 @@ body::before {
       <button class="filter-chip" onclick="setFilter(this,'medium')">Medium</button>
       <button class="filter-chip" onclick="setFilter(this,'low')">Low</button>
     </div>
+    <div class="alert-search-wrap">
+      <input class="alert-search" id="alertSearch" type="search" placeholder="FILTER ALERTS: IP, HOST, AGENT, EVENT ID, TERM..." oninput="applyAlertFilters()">
+      <button class="alert-search-clear" onclick="clearAlertSearch()">Clear</button>
+    </div>
+    <div class="alert-search-hint" id="alertSearchHint">Showing all alerts</div>
     <div class="event-list-scroll" id="eventList"></div>
   </div>
 
@@ -1284,7 +1295,7 @@ body::before {
 
 <script>
 const params = new URLSearchParams(location.search);
-const state = { sessionId: params.get('session_id') || 'demo', view: params.get('view') || 'analyst' };
+const state = { sessionId: params.get('session_id') || 'demo', view: params.get('view') || 'analyst', activeSeverityFilter:'all', alertSearch:'' };
 let EVENTS = [];
 let CASES = [];
 let ASOM_LINES = [
@@ -1330,17 +1341,35 @@ async function refreshData() {
   const counts = {}; EVENTS.forEach(ev => counts[ev.agent] = (counts[ev.agent] || 0) + 1);
   AGENT_TABLE = Object.entries(counts).map(([agent,count]) => ({ agent, count, status:'active' }));
 }
+function eventSearchBlob(ev) {
+  return [ev.id, ev.sev, ev.sevLabel, ev.title, ev.agent, ev.time, ev.snippet, ev.explanation, ev.nextQ, ev.log, ...(ev.enrichment||[]).flatMap(x=>[x.label,x.val,x.cls]), ...(ev.tags||[]).flatMap(x=>[x.label,x.cls])].join(' ').toLowerCase();
+}
+function filteredEventEntries() {
+  const q = (state.alertSearch || '').trim().toLowerCase();
+  return EVENTS.map((ev, i) => ({ev, i})).filter(({ev}) => {
+    const severityOk = state.activeSeverityFilter === 'all' || ev.sev === state.activeSeverityFilter;
+    const searchOk = !q || eventSearchBlob(ev).includes(q);
+    return severityOk && searchOk;
+  });
+}
 function renderEvents() {
   const list = document.getElementById('eventList'); list.innerHTML = '';
-  EVENTS.forEach((ev, i) => {
+  const entries = filteredEventEntries();
+  entries.forEach(({ev, i}, displayIndex) => {
     const row = document.createElement('div');
     row.className = `event-row ${ev.sev}`; row.id = `evrow-${i}`; row.onclick = () => selectEvent(i);
-    row.innerHTML = `<div class="event-row-top"><div class="event-title">${i < 2 ? '<span class="new-indicator"></span>' : ''}${escapeHtml(ev.title)}</div><span class="sev-badge ${ev.sev}">${escapeHtml(ev.sevLabel)}</span></div><div class="event-snippet">${escapeHtml(ev.snippet)}</div><div class="event-meta"><span class="event-agent">${escapeHtml(ev.agent)}</span><span class="event-time">${escapeHtml(ev.time)}</span></div>`;
+    row.innerHTML = `<div class="event-row-top"><div class="event-title">${displayIndex < 2 ? '<span class="new-indicator"></span>' : ''}${escapeHtml(ev.title)}</div><span class="sev-badge ${ev.sev}">${escapeHtml(ev.sevLabel)}</span></div><div class="event-snippet">${escapeHtml(ev.snippet)}</div><div class="event-meta"><span class="event-agent">${escapeHtml(ev.agent)}</span><span class="event-time">${escapeHtml(ev.time)}</span></div>`;
     list.appendChild(row);
   });
+  if (!entries.length) list.innerHTML = '<div style="padding:18px;color:var(--text-muted);font-family:var(--mono);text-transform:uppercase;letter-spacing:.08em;">No alerts match current filters.</div>';
   const active = EVENTS.filter(e => e.status !== 'dismissed').length;
   const stat = [...document.querySelectorAll('.stat-card')].find(x => x.textContent.includes('Events Today'))?.querySelector('.stat-value'); if (stat) stat.textContent = active;
+  const hint = document.getElementById('alertSearchHint');
+  if (hint) hint.textContent = `Showing ${entries.length} of ${EVENTS.length} alerts` + (state.alertSearch ? ` // filter: ${state.alertSearch}` : '');
+  const count = document.querySelector('.toolbar-count'); if (count) count.textContent = `${entries.length} shown`;
 }
+function applyAlertFilters() { state.alertSearch = document.getElementById('alertSearch')?.value || ''; renderEvents(); }
+function clearAlertSearch() { const el=document.getElementById('alertSearch'); if(el) el.value=''; state.alertSearch=''; renderEvents(); }
 function selectEvent(i) {
   document.querySelectorAll('.event-row').forEach(r => r.classList.remove('selected'));
   const row = document.getElementById(`evrow-${i}`); if(row) row.classList.add('selected');
@@ -1354,7 +1383,7 @@ function selectEvent(i) {
 function toggleLog() { const s=document.getElementById('logSnippet'), b=document.getElementById('logBtn'); if(!s||!b)return; const v = s.classList.toggle('visible'); b.textContent = v ? 'Hide Log' : 'Show Log'; }
 async function dismissEvent(i) { const ev=EVENTS[i]; if(!ev)return; await fetch('/api/events/'+encodeURIComponent(ev.id)+'/dismiss',{method:'PATCH'}); ev.status='dismissed'; const row=document.getElementById(`evrow-${i}`); if(row){row.style.opacity='0.35';row.style.pointerEvents='none';} document.getElementById('detailEmpty').style.display='flex'; document.getElementById('detailContent').classList.remove('visible'); }
 async function escalateEvent(i) { const ev=EVENTS[i]; if(!ev)return; await fetch('/api/events/'+encodeURIComponent(ev.id)+'/escalate',{method:'PATCH'}); await refreshData(); renderDrawer(); renderCommander(); const row=document.getElementById(`evrow-${i}`); if(row) row.style.borderLeft='3px solid var(--blue)'; const btn=document.querySelector('.btn-escalate'); if(btn){btn.textContent='✓ Escalated'; btn.style.background='var(--green)';} }
-function setFilter(el, f='all') { document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active','crit','high-f')); el.classList.add('active'); document.querySelectorAll('.event-row').forEach((row,i)=>{row.style.display=(f==='all'||EVENTS[i]?.sev===f)?'block':'none';}); }
+function setFilter(el, f='all') { document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active')); el.classList.add('active'); state.activeSeverityFilter = f; renderEvents(); }
 function renderDrawer() {
   const body = document.getElementById('drawerBody');
   body.innerHTML = CASES.length ? CASES.map(c => `<div class="case-row"><div class="case-id">${escapeHtml(c.id)}</div><div class="case-name">${escapeHtml(c.name)}</div><span class="case-status ${escapeHtml(c.status)}">${escapeHtml(c.status)}</span></div>`).join('') : '<div style="color:var(--text-muted);padding:20px">No escalated cases yet.</div>';
