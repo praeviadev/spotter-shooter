@@ -976,6 +976,31 @@ async def account_detail(account_id: str, token: str = ""):
     return E({**account_public(a), "cases": [dict(r) for r in cases_rows]})
 
 
+@app.delete("/api/accounts/{account_id}")
+async def delete_account(account_id: str, token: str = ""):
+    p = await P()
+    actor = await require_admin_from_token(p, token)
+    if not actor:
+        return E(None, error="admin required")
+    a = await p.fetchrow("select * from accounts where id=$1 or username=$2", uuid.UUID(account_id) if re.match(r"^[0-9a-f-]{36}$", account_id, re.I) else None, account_id)
+    if not a:
+        return E(None, error="account not found")
+    if str(a["id"]) == str(actor["id"]):
+        return E(None, error="cannot delete your own active admin account")
+    await p.execute("update teams set team_lead_id=null where team_lead_id=$1", a["id"])
+    await p.execute("update teams set deputy_team_lead_id=null where deputy_team_lead_id=$1", a["id"])
+    await p.execute("update teams set planner_id=null where planner_id=$1", a["id"])
+    await p.execute("update teams set ncoic_id=null where ncoic_id=$1", a["id"])
+    await p.execute("update cases set created_by=null where created_by=$1", a["id"])
+    await p.execute("update case_timeline set actor_id=null where actor_id=$1", a["id"])
+    await p.execute("update case_indicators set created_by=null where created_by=$1", a["id"])
+    await p.execute("delete from case_members where account_id=$1", a["id"])
+    await p.execute("delete from login_challenges where account_id=$1", a["id"])
+    await p.execute("delete from auth_sessions where account_id=$1", a["id"])
+    await p.execute("delete from accounts where id=$1", a["id"])
+    return E({"deleted": True, "account_id": str(a["id"]), "username": a["username"]})
+
+
 @app.get("/api/teams")
 async def teams():
     p = await P()

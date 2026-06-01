@@ -1157,7 +1157,7 @@ body::before {
 
   <div class="header-right">
     <div class="live-badge"><span class="dot green"></span> Stack Nominal</div>
-    <div class="hunt-name">Agents Online</div>
+    <div class="hunt-name" id="currentUserBadge" onclick="openMyProfile()" style="cursor:pointer">Login</div>
   </div>
 </header>
 <div class="readonly-banner" id="readOnlyBanner">Read-only view. Please <a onclick="openLogin()">login</a> or <a onclick="openCreateAccount()">Create an Account</a>.</div>
@@ -1430,6 +1430,7 @@ async function refreshData() {
   ONLINE = await api('/api/presence/online').catch(()=>[]);
   document.getElementById('readOnlyBanner').style.display = state.me?.read_only ? 'flex' : 'none';
   document.querySelectorAll('.admin-only').forEach(el=>el.style.display = state.me?.account?.privilege_level === 'admin' ? '' : 'none');
+  updateCurrentUserBadge();
   renderOnline();
   FEED = EVENTS.map(ev => ({ time:ev.time, color:ev.sev==='crit'?'red':ev.sev==='high'?'amber':ev.sev==='medium'?'blue':'green', agent:ev.agent, text:ev.title, tag:ev.sevLabel }));
   const counts = {}; EVENTS.forEach(ev => counts[ev.agent] = (counts[ev.agent] || 0) + 1);
@@ -1450,6 +1451,11 @@ function filteredEventEntries() {
 function hideBottomBar(){ localStorage.setItem('spotterBottomHidden','1'); const bar=document.getElementById('analystBottomBar'), btn=document.getElementById('bottomRestoreBtn'); if(bar)bar.classList.add('hidden'); if(btn)btn.classList.add('visible'); }
 function showBottomBar(){ localStorage.setItem('spotterBottomHidden','0'); const bar=document.getElementById('analystBottomBar'), btn=document.getElementById('bottomRestoreBtn'); if(bar)bar.classList.remove('hidden'); if(btn)btn.classList.remove('visible'); }
 function applyBottomBarPref(){ if(localStorage.getItem('spotterBottomHidden')==='1') hideBottomBar(); else showBottomBar(); }
+
+function updateCurrentUserBadge(){ const el=document.getElementById('currentUserBadge'); if(!el)return; const a=state.me?.account; el.textContent=a ? (a.formatted_name || personName(a).replace(/&amp;/g,'&')) : 'Login'; }
+function openMyProfile(){ const a=state.me?.account; if(!state.token || !a){ openLogin(); return; } openProfile(a.id); }
+async function loadAccountForEdit(id){ const a=await api('/api/accounts/'+encodeURIComponent(id)+'?token='+encodeURIComponent(state.token)); ['First','Last','Name','User','Email','Phone','Years','Certs','Degrees','Contact','Bio'].forEach(k=>{const el=document.getElementById('acct'+k); if(el) el.value='';}); acctFirst.value=a.first_name||''; acctLast.value=a.last_name||''; acctName.value=a.display_name||''; acctUser.value=a.username||''; acctEmail.value=a.email||''; acctPhone.value=a.phone||''; acctPriv.value=a.privilege_level||'analyst'; acctBranch.value=a.service_branch||''; updateRankOptionsFor('acct'); acctRank.value=a.rank||''; acctRole.value=a.work_role||''; acctSkill.value=a.skill_level||''; acctTeamId.value=a.team_id||''; acctYears.value=a.years_experience||0; acctCerts.value=a.certs||''; acctDegrees.value=a.degrees||''; acctContact.value=a.contact||''; acctBio.value=a.bio||''; }
+async function deleteAccount(id){ if(!confirm('Delete this user account? This removes sessions and case membership.'))return; await api('/api/accounts/'+encodeURIComponent(id)+'?token='+encodeURIComponent(state.token),{method:'DELETE'}); await refreshData(); await renderAccounts(); renderCommander(); }
 function renderStats() {
   const esc = EVENTS.filter(e=>e.status==='escalated').length, dis = EVENTS.filter(e=>e.status==='dismissed').length;
   const openCases = CASES.filter(c=>c.status!=='closed').length;
@@ -1558,7 +1564,7 @@ async function renderAccounts(){
   const disabled = state.me?.account?.privilege_level === 'admin' ? '' : 'disabled';
   document.getElementById('accountForm').innerHTML=accountFormHtml('acct', true)+`<button class="btn btn-escalate" onclick="saveAccount()">Save Account</button>`;
   updateRankOptionsFor('acct');
-  document.getElementById('accountList').innerHTML='<div class="tl-body">Profiles are opened by clicking names in Who\'s Online, case membership, or commander analyst cards. Account creation stays private on this screen.</div>';
+  document.getElementById('accountList').innerHTML=ACCOUNTS.map(a=>`<div class="profile-card"><b onclick="openProfile('${a.id}')" style="cursor:pointer">${personName(a)}</b><br><span class="tl-time">${escapeHtml(a.privilege_level)} · ${escapeHtml(a.skill_level||'')} ${escapeHtml(a.work_role||'')} · ${teamLinkFromAccount(a)}</span><br><button class="btn btn-expand" onclick="loadAccountForEdit('${a.id}')">Edit</button><button class="btn btn-danger" onclick="deleteAccount('${a.id}')">Delete</button></div>`).join('') || '<div class="tl-body">No accounts yet.</div>';
   renderTeamAdmin();
 }
 function updateRankOptions(){ updateRankOptionsFor('acct'); }
