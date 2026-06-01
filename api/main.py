@@ -1,12 +1,16 @@
 import asyncio
+import hashlib
+import hmac
 import json
 import os
+import random
 import re
+import secrets
 import shutil
 import subprocess
 import tempfile
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -27,6 +31,10 @@ class Settings(BaseSettings):
     elasticsearch_url: str = "http://host.docker.internal:9209"
     openrouter_api_key: str = ""
     openrouter_model: str = "openai/gpt-4o-mini"
+    app_secret: str = "spotter-local-secret-change-me"
+    kibana_url: str = "https://kibana.praeviaintel.com"
+    smtp_url: str = ""
+    sms_webhook_url: str = ""
 
     class Config:
         env_file = ".env"
@@ -56,6 +64,13 @@ async def migrate_db(db):
         "alter table case_events add column if not exists added_by uuid",
         "alter table case_events add column if not exists note text default ''",
         "create table if not exists accounts (id uuid primary key default gen_random_uuid(), username text unique not null, display_name text not null, privilege_level text not null default 'analyst', service_branch text default '', rank text default '', work_role text default '', skill_level text default 'basic', team text default '', bio text default '', certs text default '', degrees text default '', years_experience int default 0, contact text default '', created_at timestamptz default now(), updated_at timestamptz default now())",
+        "alter table accounts add column if not exists email text default ''",
+        "alter table accounts add column if not exists phone text default ''",
+        "alter table accounts add column if not exists password_hash text default ''",
+        "alter table accounts add column if not exists team_id uuid",
+        "create table if not exists teams (id uuid primary key default gen_random_uuid(), team_type text not null default 'CPT', number text unique not null, name text not null, description text default '', logo_url text default '', location text default '', phone text default '', email text default '', notes text default '', team_lead_id uuid, deputy_team_lead_id uuid, planner_id uuid, ncoic_id uuid, created_at timestamptz default now(), updated_at timestamptz default now())",
+        "create table if not exists auth_sessions (token text primary key, account_id uuid references accounts(id) on delete cascade, created_at timestamptz default now(), expires_at timestamptz not null)",
+        "create table if not exists login_challenges (id uuid primary key default gen_random_uuid(), account_id uuid references accounts(id) on delete cascade, code_hash text not null, destination text default '', method text default 'email', expires_at timestamptz not null, used_at timestamptz, created_at timestamptz default now())",
         "create table if not exists case_members (case_id uuid references cases(id) on delete cascade, account_id uuid references accounts(id) on delete cascade, role text default 'supporting analyst', joined_at timestamptz default now(), primary key(case_id, account_id))",
         "create table if not exists case_indicators (id uuid primary key default gen_random_uuid(), case_id uuid references cases(id) on delete cascade, indicator_type text not null, value text not null, source text default 'analyst', description text default '', created_by uuid references accounts(id), created_at timestamptz default now(), unique(case_id, indicator_type, value))",
         "create table if not exists case_timeline (id uuid primary key default gen_random_uuid(), case_id uuid references cases(id) on delete cascade, event_time timestamptz default now(), entry_type text not null default 'note', title text not null, body text default '', actor_id uuid references accounts(id), actor_name text default '', related_event_id text, related_indicator text, created_at timestamptz default now())",
@@ -63,6 +78,7 @@ async def migrate_db(db):
         "insert into enrichment_configs(name, provider_type, enabled, base_url, notes, config) values ('Local OpenCTI','opencti',false,'http://opencti:8080','Local OpenCTI enrichment. Configure URL/token before enabling.', '{\"token_env\":\"OPENCTI_TOKEN\"}'::jsonb) on conflict(name) do nothing",
         "insert into enrichment_configs(name, provider_type, enabled, base_url, notes, config) values ('VirusTotal','virustotal',false,'https://www.virustotal.com/api/v3','Optional cloud enrichment. Disabled by default; requires API key.', '{\"api_key_env\":\"VIRUSTOTAL_API_KEY\"}'::jsonb) on conflict(name) do nothing",
         "insert into enrichment_configs(name, provider_type, enabled, base_url, notes, config) values ('Custom HTTP Enrichment','custom_http',false,'','Operator-defined HTTP enrichment endpoint. Disabled by default.', '{}'::jsonb) on conflict(name) do nothing",
+        """insert into teams(team_type,number,name) values ('CPT','100','100 Cyber Protection Team'),('CPT','101','101 Cyber Protection Team'),('CPT','150','150 Cyber Protection Team'),('CPT','151','151 Cyber Protection Team'),('CPT','152','152 Cyber Protection Team'),('CPT','153','153 Cyber Protection Team'),('CPT','154','154 Cyber Protection Team'),('CPT','155','155 Cyber Protection Team'),('CPT','156','156 Cyber Protection Team'),('CPT','200','200 Cyber Protection Team'),('CPT','201','201 Cyber Protection Team'),('CPT','400','400 Cyber Protection Team'),('CPT','401','401 Cyber Protection Team'),('CPT','600','600 Cyber Protection Team'),('CPT','503','503 Cyber Protection Team'),('NCPT','01','01 National Cyber Protection Team'),('NCPT','03','03 National Cyber Protection Team'),('NCPT','05','05 National Cyber Protection Team'),('NCPT','23','23 National Cyber Protection Team') on conflict(number) do nothing""",
     ]
     async with db.acquire() as conn:
         for stmt in stmts:
@@ -76,9 +92,62 @@ RANKS = {
     "navy": ["SR", "SA", "SN", "PO3", "PO2", "PO1", "CPO", "SCPO", "MCPO", "CMC", "MCPON", "ENS", "LTJG", "LT", "LCDR", "CDR", "CAPT", "RDML", "RADM", "VADM", "ADM", "FADM"],
     "marines": ["Pvt", "PFC", "LCpl", "Cpl", "Sgt", "SSgt", "GySgt", "MSgt", "1stSgt", "MGySgt", "SgtMaj", "SMMC", "WO", "CWO2", "CWO3", "CWO4", "CWO5", "2ndLt", "1stLt", "Capt", "Maj", "LtCol", "Col", "BGen", "MajGen", "LtGen", "Gen"],
 }
-WORK_ROLES = ["analytic support officer", "data engineer", "host analyst", "network analyst", "planner", "cyber integration technician", "master gunner", "team lead", "commander"]
-SKILL_LEVELS = ["basic", "senior", "master"]
+WORK_ROLES = ["Analytic Support Officer", "Data Engineer", "Host Analyst", "Network Analyst", "Planner", "Cyber Integration Technician", "Master Gunner", "Team Lead", "Deputy Team Lead", "NCOIC", "Commander"]
+SKILL_LEVELS = ["Basic", "Senior", "Master"]
 PRIVILEGE_LEVELS = ["admin", "analyst"]
+TEAM_ROLES = ["Team Lead", "Deputy Team Lead", "Planner", "NCOIC"]
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 120000).hex()
+    return f"pbkdf2_sha256${salt}${digest}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    if not stored or "$" not in stored:
+        return False
+    try:
+        _, salt, digest = stored.split("$", 2)
+        got = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 120000).hex()
+        return hmac.compare_digest(got, digest)
+    except Exception:
+        return False
+
+
+def hash_code(code: str) -> str:
+    return hmac.new(settings.app_secret.encode(), code.encode(), hashlib.sha256).hexdigest()
+
+
+async def get_actor(p, token: str = ""):
+    if token:
+        row = await p.fetchrow("select a.* from auth_sessions s join accounts a on a.id=s.account_id where s.token=$1 and s.expires_at>now()", token)
+        if row:
+            return row
+    return await ensure_default_account(p)
+
+
+def account_public(r):
+    d = rd(r)
+    d.pop("password_hash", None)
+    return d
+
+
+def can_edit_account(actor, target_id: str) -> bool:
+    return actor and (actor["privilege_level"] == "admin" or str(actor["id"]) == str(target_id))
+
+
+async def send_otp(method: str, destination: str, code: str):
+    # MVP delivery: if SMTP/SMS webhook envs are absent, return the code for local/demo display.
+    if method == "sms" and settings.sms_webhook_url:
+        async with httpx.AsyncClient(timeout=10) as c:
+            await c.post(settings.sms_webhook_url, json={"to": destination, "message": f"Spotter-Shooter login code: {code}"})
+        return {"delivered": True}
+    if method == "email" and settings.smtp_url:
+        async with httpx.AsyncClient(timeout=10) as c:
+            await c.post(settings.smtp_url, json={"to": destination, "subject": "Spotter-Shooter login code", "text": f"Your login code is {code}"})
+        return {"delivered": True}
+    return {"delivered": False, "demo_code": code, "note": "Configure SMTP_URL or SMS_WEBHOOK_URL for real delivery."}
 
 
 def extract_indicators_from_event(event_row):
@@ -511,12 +580,6 @@ async def dismiss(event_id: str):
     return E({"event_id": event_id, "status": "dismissed"})
 
 
-@app.patch("/api/events/{event_id}/dismiss")
-async def dismiss(event_id: str):
-    await (await P()).execute("update events set status='dismissed', updated_at=now() where event_id=$1", event_id)
-    return E({"event_id": event_id, "status": "dismissed"})
-
-
 async def ensure_default_account(p):
     row = await p.fetchrow("select * from accounts order by created_at limit 1")
     if row:
@@ -710,36 +773,157 @@ async def finalize_case(case_id: str, payload: dict = {}):
 
 @app.get("/api/accounts/options")
 async def account_options():
-    return E({"ranks": RANKS, "work_roles": WORK_ROLES, "skill_levels": SKILL_LEVELS, "privilege_levels": PRIVILEGE_LEVELS})
+    return E({"ranks": RANKS, "work_roles": WORK_ROLES, "skill_levels": SKILL_LEVELS, "privilege_levels": PRIVILEGE_LEVELS, "team_roles": TEAM_ROLES})
+
+
+@app.get("/api/auth/me")
+async def auth_me(token: str = ""):
+    actor = await get_actor(await P(), token)
+    return E({"authenticated": bool(token), "read_only": not bool(token), "account": account_public(actor), "message": "Read-only view. Please login or Create an Account." if not token else "Authenticated"})
+
+
+@app.post("/api/auth/login")
+async def auth_login(payload: dict):
+    p = await P()
+    username = payload.get("username", "")
+    password = payload.get("password", "")
+    method = payload.get("method", "email")
+    a = await p.fetchrow("select * from accounts where username=$1 or email=$1 or phone=$1", username)
+    if not a or not verify_password(password, a["password_hash"]):
+        return E(None, error="invalid username/password")
+    destination = a["phone"] if method == "sms" else a["email"]
+    if not destination:
+        destination = a["contact"] or a["email"] or a["phone"] or "demo-local"
+    code = f"{random.randint(100000, 999999)}"
+    ch = await p.fetchrow("insert into login_challenges(account_id,code_hash,destination,method,expires_at) values($1,$2,$3,$4,now()+interval '10 minutes') returning id", a["id"], hash_code(code), destination, method)
+    delivery = await send_otp(method, destination, code)
+    return E({"challenge_id": str(ch["id"]), "method": method, "destination": destination, **delivery})
+
+
+@app.post("/api/auth/verify")
+async def auth_verify(payload: dict):
+    p = await P()
+    ch = await p.fetchrow("select * from login_challenges where id=$1 and used_at is null and expires_at>now()", uuid.UUID(payload["challenge_id"]))
+    if not ch or not hmac.compare_digest(ch["code_hash"], hash_code(payload.get("code", ""))):
+        return E(None, error="invalid or expired code")
+    token = secrets.token_urlsafe(32)
+    await p.execute("update login_challenges set used_at=now() where id=$1", ch["id"])
+    await p.execute("insert into auth_sessions(token,account_id,expires_at) values($1,$2,now()+interval '12 hours')", token, ch["account_id"])
+    a = await p.fetchrow("select * from accounts where id=$1", ch["account_id"])
+    return E({"token": token, "account": account_public(a)})
+
+
+@app.post("/api/auth/logout")
+async def auth_logout(payload: dict):
+    await (await P()).execute("delete from auth_sessions where token=$1", payload.get("token", ""))
+    return E({"logged_out": True})
 
 
 @app.get("/api/accounts")
-async def accounts():
-    rows = await (await P()).fetch("select * from accounts order by display_name")
-    return E([rd(r) for r in rows])
+async def accounts(token: str = ""):
+    p = await P()
+    actor = await get_actor(p, token)
+    if actor["privilege_level"] == "admin":
+        rows = await p.fetch("select a.*, t.name as team_name, t.number as team_number, t.team_type from accounts a left join teams t on t.id=a.team_id order by a.display_name")
+    else:
+        rows = await p.fetch("select a.*, t.name as team_name, t.number as team_number, t.team_type from accounts a left join teams t on t.id=a.team_id where a.id=$1 order by a.display_name", actor["id"])
+    return E([account_public(r) for r in rows])
 
 
 @app.post("/api/accounts")
 async def create_account(payload: dict):
     p = await P()
+    actor = await get_actor(p, payload.get("token", ""))
     username = payload.get("username") or snake(payload.get("display_name", "analyst"))
+    existing = await p.fetchrow("select * from accounts where username=$1", username)
+    if existing and not can_edit_account(actor, existing["id"]):
+        return E(None, error="not authorized to edit this account")
+    if payload.get("privilege_level") == "admin" and actor["privilege_level"] != "admin":
+        payload["privilege_level"] = "analyst"
+    password_hash = hash_password(payload.get("password")) if payload.get("password") else (existing["password_hash"] if existing else "")
+    team_id = uuid.UUID(payload["team_id"]) if payload.get("team_id") else None
     r = await p.fetchrow("""
-        insert into accounts(username,display_name,privilege_level,service_branch,rank,work_role,skill_level,team,bio,certs,degrees,years_experience,contact)
-        values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-        on conflict(username) do update set display_name=excluded.display_name, privilege_level=excluded.privilege_level, service_branch=excluded.service_branch, rank=excluded.rank, work_role=excluded.work_role, skill_level=excluded.skill_level, team=excluded.team, bio=excluded.bio, certs=excluded.certs, degrees=excluded.degrees, years_experience=excluded.years_experience, contact=excluded.contact, updated_at=now()
+        insert into accounts(username,display_name,privilege_level,service_branch,rank,work_role,skill_level,team,bio,certs,degrees,years_experience,contact,email,phone,password_hash,team_id)
+        values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+        on conflict(username) do update set display_name=excluded.display_name, privilege_level=excluded.privilege_level, service_branch=excluded.service_branch, rank=excluded.rank, work_role=excluded.work_role, skill_level=excluded.skill_level, team=excluded.team, bio=excluded.bio, certs=excluded.certs, degrees=excluded.degrees, years_experience=excluded.years_experience, contact=excluded.contact, email=excluded.email, phone=excluded.phone, password_hash=excluded.password_hash, team_id=excluded.team_id, updated_at=now()
         returning *
-    """, username, payload.get("display_name", username), payload.get("privilege_level", "analyst"), payload.get("service_branch", ""), payload.get("rank", ""), payload.get("work_role", "network analyst"), payload.get("skill_level", "basic"), payload.get("team", ""), payload.get("bio", ""), payload.get("certs", ""), payload.get("degrees", ""), int(payload.get("years_experience") or 0), payload.get("contact", ""))
-    return E(rd(r))
+    """, username, payload.get("display_name", username), payload.get("privilege_level", "analyst"), payload.get("service_branch", ""), payload.get("rank", ""), payload.get("work_role", "Network Analyst"), payload.get("skill_level", "Basic"), payload.get("team", ""), payload.get("bio", ""), payload.get("certs", ""), payload.get("degrees", ""), int(payload.get("years_experience") or 0), payload.get("contact", ""), payload.get("email", ""), payload.get("phone", ""), password_hash, team_id)
+    return E(account_public(r))
 
 
 @app.get("/api/accounts/{account_id}")
-async def account_detail(account_id: str):
+async def account_detail(account_id: str, token: str = ""):
     p = await P()
-    a = await p.fetchrow("select * from accounts where id=$1 or username=$2", uuid.UUID(account_id) if re.match(r"^[0-9a-f-]{36}$", account_id, re.I) else None, account_id)
+    actor = await get_actor(p, token)
+    a = await p.fetchrow("select a.*, t.name as team_name, t.number as team_number, t.team_type from accounts a left join teams t on t.id=a.team_id where a.id=$1 or a.username=$2", uuid.UUID(account_id) if re.match(r"^[0-9a-f-]{36}$", account_id, re.I) else None, account_id)
     if not a:
         return E(None, error="account not found")
+    if not can_edit_account(actor, a["id"]):
+        return E(None, error="not authorized")
     cases_rows = await p.fetch("select c.case_id,c.name,c.status,c.updated_at,cm.role from case_members cm join cases c on c.id=cm.case_id where cm.account_id=$1 order by c.updated_at desc", a["id"])
-    return E({**rd(a), "cases": [dict(r) for r in cases_rows]})
+    return E({**account_public(a), "cases": [dict(r) for r in cases_rows]})
+
+
+@app.get("/api/teams")
+async def teams():
+    p = await P()
+    rows = await p.fetch("""
+        select t.*, count(a.id)::int as member_count from teams t
+        left join accounts a on a.team_id=t.id
+        group by t.id order by case when t.team_type='CPT' then 0 else 1 end, lpad(t.number,3,'0')
+    """)
+    return E([rd(r) for r in rows])
+
+
+@app.post("/api/teams")
+async def upsert_team(payload: dict):
+    p = await P()
+    actor = await get_actor(p, payload.get("token", ""))
+    if actor["privilege_level"] != "admin":
+        return E(None, error="admin required")
+    r = await p.fetchrow("""
+        insert into teams(team_type,number,name,description,logo_url,location,phone,email,notes,team_lead_id,deputy_team_lead_id,planner_id,ncoic_id)
+        values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        on conflict(number) do update set team_type=excluded.team_type, name=excluded.name, description=excluded.description, logo_url=excluded.logo_url, location=excluded.location, phone=excluded.phone, email=excluded.email, notes=excluded.notes, team_lead_id=excluded.team_lead_id, deputy_team_lead_id=excluded.deputy_team_lead_id, planner_id=excluded.planner_id, ncoic_id=excluded.ncoic_id, updated_at=now()
+        returning *
+    """, payload.get("team_type", "CPT"), payload["number"], payload.get("name") or f"{payload['number']} Cyber Protection Team", payload.get("description", ""), payload.get("logo_url", ""), payload.get("location", ""), payload.get("phone", ""), payload.get("email", ""), payload.get("notes", ""), uuid.UUID(payload["team_lead_id"]) if payload.get("team_lead_id") else None, uuid.UUID(payload["deputy_team_lead_id"]) if payload.get("deputy_team_lead_id") else None, uuid.UUID(payload["planner_id"]) if payload.get("planner_id") else None, uuid.UUID(payload["ncoic_id"]) if payload.get("ncoic_id") else None)
+    return E(rd(r))
+
+
+@app.get("/api/teams/{team_id}")
+async def team_detail(team_id: str):
+    p = await P()
+    t = await p.fetchrow("select * from teams where id=$1 or number=$2", uuid.UUID(team_id) if re.match(r"^[0-9a-f-]{36}$", team_id, re.I) else None, team_id)
+    if not t:
+        return E(None, error="team not found")
+    members = await p.fetch("select * from accounts where team_id=$1 order by rank, display_name", t["id"])
+    leadership = {}
+    for field in ["team_lead_id", "deputy_team_lead_id", "planner_id", "ncoic_id"]:
+        aid = t[field]
+        leadership[field] = account_public(await p.fetchrow("select * from accounts where id=$1", aid)) if aid else None
+    return E({**rd(t), "leadership": leadership, "members": [account_public(m) for m in members]})
+
+
+@app.get("/api/setup/kibana")
+async def kibana_info(url: Optional[str] = None):
+    return E({"url": url or settings.kibana_url, "note": "Kibana may require separate Traefik/basic-auth credentials."})
+
+
+@app.post("/api/chat")
+async def chat(payload: dict):
+    role = payload.get("role", "analyst")
+    question = payload.get("message", "")[:2000]
+    context = {"role": role, "question": question, "events": [], "cases": []}
+    p = await P()
+    for r in await p.fetch("select event_id,title,severity,status,explanation from events order by updated_at desc limit 8"):
+        context["events"].append(dict(r))
+    for r in await p.fetch("select case_id,name,status,final_output from cases order by updated_at desc limit 5"):
+        context["cases"].append(dict(r))
+    if settings.openrouter_api_key:
+        ans = await openrouter_agent_summary(f"{role}_chatbot", {"title": "Operator question", "question": question, "context": context, "fallback_explanation": "Answer from current case/event context."}, "medium")
+        return E({"answer": ans["explanation"] + "\n\nSuggested way ahead: " + ans["recommended_next_question"], "model": ans.get("model_used")})
+    fallback = "Review the highest-severity open alerts, confirm raw evidence, and update the case timeline. " if role == "analyst" else "Focus the briefing on open cases, unresolved 5 Ws, affected assets, and decisions needed. "
+    return E({"answer": fallback + "Current context includes %d events and %d cases. Question: %s" % (len(context["events"]), len(context["cases"]), question), "model": "deterministic"})
 
 
 @app.get("/api/enrichment/configs")

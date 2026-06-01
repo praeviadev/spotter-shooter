@@ -87,6 +87,60 @@ The commander console gives leadership a high-level operational picture:
 - cases and escalation state
 - event counts by agent
 
+
+### Case management and analyst collaboration
+
+Validated findings can now become durable cases instead of one-off alert cards. The case workbench supports:
+
+- multiple alerts linked into one case
+- multiple analysts dogpiling on one case
+- case members with rank, work role, skill level, branch, team, certifications, degrees, and experience
+- case indicators with hover/click relationship lookup across other cases and events
+- timeline entries for analyst notes, admin requests, enrichment, containment, and findings
+- AI-style final output including BLUF / "So What", 5 Ws, technical summary, way ahead, and analyst/team attribution
+
+### Cyber Protection Team profiles
+
+The platform includes Cyber Protection Team and National Cyber Protection Team objects. Admins can create and edit teams with:
+
+- team type: CPT or NCPT
+- team number and name
+- logo/picture URL
+- location
+- phone number
+- email
+- notes, mission, and coverage details
+- team lead, deputy team lead, planner, and NCOIC assignments
+- member list generated from assigned analyst accounts
+
+Seeded CPTs: 100, 101, 150, 151, 152, 153, 154, 155, 156, 200, 201, 400, 401, 600, 503.
+
+Seeded NCPTs: 01, 03, 05, 23.
+
+### Accounts, roles, and read-only mode
+
+After installation, unauthenticated visitors see a read-only banner:
+
+```text
+Read-only view. Please login or Create an Account.
+```
+
+Account creation lives in the admin/account panel. Analysts can edit their own account. Admins can edit all accounts and create/update Cyber Protection Teams.
+
+The login flow includes a two-step challenge-code framework for email or cell phone verification. In a local/demo environment without `SMTP_URL` or `SMS_WEBHOOK_URL`, the code is shown in the UI for testing. In production, configure one of those delivery endpoints so the code is delivered out-of-band.
+
+### Analyst and Commander chatbots
+
+Analyst View and Commander View include a context-aware chatbot. It can answer operational questions, summarize current cases and events, and suggest a way ahead. When OpenRouter is configured, the chatbot uses the configured model. Otherwise it falls back to deterministic guidance from the current case/event context.
+
+### PCAP to Zeek to Elastic ingestion
+
+The PCAP upload path is now functional. Operators can upload `.pcap`, `.pcapng`, or `.cap` files, run them through a Zeek container, and bulk-index the generated JSON logs back into Elastic under `spotter-zeek-*` indices. The UI reports the created index, Zeek log types, and indexed document count.
+
+### Kibana handoff
+
+The operations header includes a **Go To Kibana** action. It opens the configured Kibana URL from the setup/backend config. This allows analysts to pivot from a Spotter-Shooter finding into raw Kibana investigation without hardcoding a private lab into the public repository.
+
 ### Agent administration
 
 The admin panel supports agent lifecycle management:
@@ -274,6 +328,45 @@ For analyst-vs-agent comparisons, this is important context: both human analysts
 
 ---
 
+
+### 11. Case Workbench — analyst dogpile and final output
+
+![Case workbench](docs/screenshots/case-workbench.png)
+
+This screenshot should show a case with multiple linked alerts, BLUF, 5 Ws, indicators, timeline entries, and final output. It proves Spotter-Shooter can move from alert triage into structured case work.
+
+**Suggested capture:** `CASE-RUNDLL32` or another escalated finding with the case workbench open.
+
+---
+
+### 12. Account and CPT administration
+
+![Account and CPT administration](docs/screenshots/account-team-admin.png)
+
+This screenshot should show the admin/account panel with analyst profile fields and the Cyber Protection Team editor. It demonstrates how personnel, rank, work role, skill level, and CPT membership become part of case attribution and commander visibility.
+
+**Suggested capture:** account form plus seeded CPT/NCPT list.
+
+---
+
+### 13. Analyst / Commander chatbot
+
+![Operations chatbot](docs/screenshots/operations-chatbot.png)
+
+This screenshot should show the chatbot answering a case or commander-briefing question and suggesting a way ahead.
+
+**Suggested capture:** ask "What should the analyst do next on this case?" or "Summarize this for a commander."
+
+---
+
+### 14. PCAP upload to Zeek
+
+![PCAP upload](docs/screenshots/pcap-zeek-upload.png)
+
+This screenshot should show a PCAP upload completing and creating a `spotter-zeek-*` index with Zeek log types such as `conn`, `dns`, and `packet_filter`.
+
+---
+
 ## Analyst-vs-agent evaluation docs
 
 This repository includes two practical evaluation guides:
@@ -359,6 +452,37 @@ curl -X POST http://127.0.0.1:8097/api/setup/launch \
   -H 'Content-Type: application/json' \
   -d '{}'
 ```
+
+---
+
+
+## 25 critiques and future improvements
+
+1. Replace MVP token auth with hardened session management, CSRF protection, refresh-token rotation, and secure cookies.
+2. Wire the email/SMS two-factor flow to production providers and add backup codes.
+3. Add password reset, account lockout, and audit trails for failed login attempts.
+4. Move account/team administration into a dedicated admin route with stricter role checks and route guards.
+5. Add per-route authorization tests so analysts can only edit themselves while admins can edit all accounts and teams.
+6. Add full CRUD edit forms for existing accounts and teams, not only create/upsert forms.
+7. Add file upload/storage for team logos instead of only accepting a logo URL.
+8. Add formal organization hierarchy support for battalion/brigade/mission partner relationships.
+9. Make CPT/NCPT naming configurable for non-Army or joint environments.
+10. Add a real notification system for admin requests and analyst mentions inside a case.
+11. Add chain-of-custody/audit logs for every case edit, indicator edit, alert attachment, and final-output regeneration.
+12. Add case status workflow gates such as open, triage, evidence review, commander review, closed, and archived.
+13. Add analyst confidence voting and dissenting opinions on case conclusions.
+14. Add full-text search across cases, indicators, timeline entries, accounts, and teams.
+15. Add saved KQL/DSL pivots that open directly in Kibana Discover with time range and query prefilled.
+16. Add enrichment result caching and provider-specific rate-limit handling.
+17. Add OpenCTI object mapping for indicators, reports, intrusion sets, malware, and relationships.
+18. Add STIX/TAXII import/export for case indicators and final products.
+19. Add ATT&CK technique mapping and coverage views per agent and per case.
+20. Add false-positive learning loops so dismissed findings improve future agent scoring.
+21. Add background job tracking for long-running PCAP imports, dataset imports, and large Elastic searches.
+22. Add regression tests for UI flows: login, account self-edit, admin edit, team creation, escalation, case dogpile, and chatbot.
+23. Add synthetic demo data reset scripts so tests do not leave stray cases/accounts behind.
+24. Add production deployment hardening: TLS, backup/restore, database migrations, secrets management, and resource limits.
+25. Add commander-ready export formats: Markdown, PDF, DOCX, and briefing-slide outlines.
 
 ---
 

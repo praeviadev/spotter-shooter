@@ -1103,6 +1103,13 @@ body::before {
 .account-panel { position:fixed; inset:70px 40px 70px 40px; background:var(--surface); border:1px solid var(--border); z-index:190; display:none; overflow:auto; box-shadow:0 0 0 9999px rgba(0,0,0,.55); }
 .account-panel.open { display:block; }
 .profile-card { padding:10px; border:1px solid var(--border); margin:8px 0; background:var(--surface2); }
+.readonly-banner { padding:10px 18px; background:var(--amber-glow); border-bottom:1px solid var(--amber-dim); color:var(--amber); font-family:var(--mono); font-size:11px; text-transform:uppercase; display:flex; gap:10px; align-items:center; justify-content:center; }
+.readonly-banner a { color:var(--blue); cursor:pointer; text-decoration:underline; }
+.login-panel,.chat-panel { position:fixed; right:34px; bottom:84px; width:420px; background:var(--surface); border:1px solid var(--border); z-index:210; display:none; box-shadow:0 0 0 9999px rgba(0,0,0,.35); }
+.login-panel.open,.chat-panel.open { display:block; }
+.chat-log { max-height:360px; overflow:auto; padding:12px; border-bottom:1px solid var(--border); }
+.chat-msg { margin-bottom:10px; padding:8px; border:1px solid var(--border); background:var(--surface2); font-size:12px; line-height:1.45; }
+.team-logo { width:40px;height:40px;object-fit:cover;border:1px solid var(--border);background:#050607;margin-right:10px; }
 
 </style>
 </head>
@@ -1120,6 +1127,8 @@ body::before {
     <button class="role-btn active" id="analystBtn" onclick="switchView('analyst')">Analyst View</button>
     <button class="role-btn" id="commanderBtn" onclick="switchView('commander')">Commander View</button>
     <button class="role-btn" onclick="openAccounts()">Accounts</button>
+    <button class="role-btn" onclick="goToKibana()">Go To Kibana</button>
+    <button class="role-btn" onclick="openChat()">Chat</button>
   </div>
 
   <div class="header-right">
@@ -1127,7 +1136,7 @@ body::before {
     <div class="hunt-name">Agents Online</div>
   </div>
 </header>
-
+<div class="readonly-banner" id="readOnlyBanner">Read-only view. Please <a onclick="openLogin()">login</a> or <a onclick="openAccounts()">Create an Account</a>.</div>
 
 <!-- ════════════════════════════════════════
      ANALYST VIEW
@@ -1301,17 +1310,22 @@ body::before {
 </div>
 <div class="relation-pop" id="relationPop"></div>
 <div class="account-panel" id="accountPanel">
-  <div class="case-lab-head"><div class="case-lab-title">Accounts / Profiles</div><button class="case-close" onclick="closeAccounts()">✕</button></div>
+  <div class="case-lab-head"><div class="case-lab-title">Admin Panel // Accounts & Teams</div><button class="case-close" onclick="closeAccounts()">✕</button></div>
   <div class="case-section-body case-grid2">
     <div class="case-section"><h3>Create / Update Account</h3><div class="case-section-body case-form" id="accountForm"></div></div>
     <div class="case-section"><h3>Profiles</h3><div class="case-section-body" id="accountList"></div></div>
+    <div class="case-section"><h3>Create / Update Cyber Protection Team</h3><div class="case-section-body case-form" id="teamForm"></div></div>
+    <div class="case-section"><h3>Team Profiles</h3><div class="case-section-body" id="teamList"></div></div>
   </div>
 </div>
 
 
+<div class="login-panel" id="loginPanel"><div class="case-lab-head"><div class="case-lab-title">Login / 2FA</div><button class="case-close" onclick="closeLogin()">✕</button></div><div class="case-section-body case-form" id="loginBody"></div></div>
+<div class="chat-panel" id="chatPanel"><div class="case-lab-head"><div class="case-lab-title" id="chatTitle">Analyst Chatbot</div><button class="case-close" onclick="closeChat()">✕</button></div><div class="chat-log" id="chatLog"></div><div class="case-section-body case-form"><textarea id="chatInput" placeholder="Ask for a way ahead, case summary, pivot idea, commander brief, etc."></textarea><button class="btn btn-escalate" onclick="sendChat()">Ask</button></div></div>
+
 <script>
 const params = new URLSearchParams(location.search);
-const state = { sessionId: params.get('session_id') || 'demo', view: params.get('view') || 'analyst', activeSeverityFilter:'all', alertSearch:'' };
+const state = { sessionId: params.get('session_id') || 'demo', view: params.get('view') || 'analyst', activeSeverityFilter:'all', alertSearch:'', token: localStorage.getItem('spotterToken') || '', me:null };
 let EVENTS = [];
 let CASES = [];
 let ASOM_LINES = [
@@ -1326,6 +1340,7 @@ let AGENT_TABLE = [];
 let ACCOUNTS = [];
 let ACCOUNT_OPTIONS = {};
 let SELECTED_CASE = null;
+let TEAMS = [];
 
 function escapeHtml(v) { return String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
 function compactTime(v) { try { return new Date(v).toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'}); } catch { return v || ''; } }
@@ -1356,8 +1371,11 @@ function normalizeCase(c) { return { uuid:c.uuid, id:c.id || c.case_id, name:c.n
 async function refreshData() {
   EVENTS = (await api('/api/events?limit=100&session_id=' + encodeURIComponent(state.sessionId)).catch(() => [])).map(normalizeEvent);
   CASES = (await api('/api/cases?session_id=' + encodeURIComponent(state.sessionId)).catch(() => [])).map(normalizeCase);
-  ACCOUNTS = await api('/api/accounts').catch(() => []);
+  ACCOUNTS = await api('/api/accounts?token=' + encodeURIComponent(state.token)).catch(() => []);
   ACCOUNT_OPTIONS = await api('/api/accounts/options').catch(() => ({}));
+  TEAMS = await api('/api/teams').catch(() => []);
+  state.me = await api('/api/auth/me?token=' + encodeURIComponent(state.token)).catch(()=>({read_only:true}));
+  document.getElementById('readOnlyBanner').style.display = state.me?.read_only ? 'flex' : 'none';
   FEED = EVENTS.map(ev => ({ time:ev.time, color:ev.sev==='crit'?'red':ev.sev==='high'?'amber':ev.sev==='medium'?'blue':'green', agent:ev.agent, text:ev.title, tag:ev.sevLabel }));
   const counts = {}; EVENTS.forEach(ev => counts[ev.agent] = (counts[ev.agent] || 0) + 1);
   AGENT_TABLE = Object.entries(counts).map(([agent,count]) => ({ agent, count, status:'active' }));
@@ -1451,10 +1469,34 @@ async function showIndicatorRelations(ev, enc) { const val=decodeURIComponent(en
 function hideIndicatorRelations(){ document.getElementById('relationPop').style.display='none'; }
 async function openAccounts(){ document.getElementById('accountPanel').classList.add('open'); await renderAccounts(); }
 function closeAccounts(){ document.getElementById('accountPanel').classList.remove('open'); }
-function opts(arr, selected=''){ return (arr||[]).map(x=>`<option ${x===selected?'selected':''}>${escapeHtml(x)}</option>`).join(''); }
-async function renderAccounts(){ ACCOUNTS=await api('/api/accounts').catch(()=>[]); ACCOUNT_OPTIONS=await api('/api/accounts/options').catch(()=>({})); const branches=Object.keys(ACCOUNT_OPTIONS.ranks||{}); document.getElementById('accountForm').innerHTML=`<input id="acctName" placeholder="Display name"><input id="acctUser" placeholder="username"><select id="acctPriv">${opts(ACCOUNT_OPTIONS.privilege_levels||['analyst','admin'])}</select><select id="acctBranch" onchange="updateRankOptions()">${opts(branches)}</select><select id="acctRank"></select><select id="acctRole">${opts(ACCOUNT_OPTIONS.work_roles||[])}</select><select id="acctSkill">${opts(ACCOUNT_OPTIONS.skill_levels||[])}</select><input id="acctTeam" placeholder="Cyber Protection Team e.g. 101 Cyber Protection Team"><input id="acctYears" type="number" placeholder="Years experience"><input id="acctCerts" placeholder="Certs"><input id="acctDegrees" placeholder="Degrees"><input id="acctContact" placeholder="Contact"><textarea id="acctBio" placeholder="Bio / background / specialties"></textarea><button class="btn btn-escalate" onclick="saveAccount()">Save Account</button>`; updateRankOptions(); document.getElementById('accountList').innerHTML=ACCOUNTS.map(a=>`<div class="profile-card"><b>${escapeHtml(a.rank||'')} ${escapeHtml(a.display_name)}</b><br><span class="tl-time">${escapeHtml(a.privilege_level)} · ${escapeHtml(a.work_role)} · ${escapeHtml(a.skill_level)} · ${escapeHtml(a.team||'no team')}</span><br>${escapeHtml(a.bio||'')}</div>`).join('') || '<div class="tl-body">No accounts yet.</div>'; }
+function opts(arr, selected=''){ return (arr||[]).map(x=>`<option value="${escapeHtml(x)}" ${x===selected?'selected':''}>${escapeHtml(x)}</option>`).join(''); }
+function teamOpts(selected=''){ return TEAMS.map(t=>`<option value="${t.id}" ${t.id===selected?'selected':''}>${escapeHtml(t.team_type)}-${escapeHtml(t.number)} // ${escapeHtml(t.name)}</option>`).join(''); }
+async function renderAccounts(){
+  ACCOUNTS=await api('/api/accounts?token=' + encodeURIComponent(state.token)).catch(()=>[]); ACCOUNT_OPTIONS=await api('/api/accounts/options').catch(()=>({})); TEAMS=await api('/api/teams').catch(()=>[]);
+  const branches=Object.keys(ACCOUNT_OPTIONS.ranks||{});
+  const disabled = state.me?.account?.privilege_level === 'admin' ? '' : 'disabled';
+  document.getElementById('accountForm').innerHTML=`<input id="acctName" placeholder="Display Name"><input id="acctUser" placeholder="Username"><input id="acctPass" type="password" placeholder="Password / leave blank to keep existing"><input id="acctEmail" placeholder="Email for 2FA"><input id="acctPhone" placeholder="Cell phone for 2FA"><select id="acctPriv" ${disabled}>${opts(ACCOUNT_OPTIONS.privilege_levels||['analyst','admin'])}</select><select id="acctBranch" onchange="updateRankOptions()">${opts(branches)}</select><select id="acctRank"></select><select id="acctRole">${opts(ACCOUNT_OPTIONS.work_roles||[])}</select><select id="acctSkill">${opts(ACCOUNT_OPTIONS.skill_levels||[])}</select><select id="acctTeamId"><option value="">No CPT/NCPT</option>${teamOpts()}</select><input id="acctYears" type="number" placeholder="Years Experience"><input id="acctCerts" placeholder="Certs"><input id="acctDegrees" placeholder="Degrees"><input id="acctContact" placeholder="Other Contact"><textarea id="acctBio" placeholder="Bio / background / specialties"></textarea><button class="btn btn-escalate" onclick="saveAccount()">Save Account</button>`;
+  updateRankOptions();
+  document.getElementById('accountList').innerHTML=ACCOUNTS.map(a=>`<div class="profile-card"><b>${escapeHtml(a.rank||'')} ${escapeHtml(a.display_name)}</b><br><span class="tl-time">${escapeHtml(a.privilege_level)} · ${escapeHtml(a.work_role)} · ${escapeHtml(a.skill_level)} · ${escapeHtml(a.team_name||a.team||'No Team')}</span><br>${escapeHtml(a.email||'')} ${escapeHtml(a.phone||'')}<br>${escapeHtml(a.bio||'')}</div>`).join('') || '<div class="tl-body">No accounts yet.</div>';
+  renderTeamAdmin();
+}
 function updateRankOptions(){ const b=document.getElementById('acctBranch')?.value; const ranks=(ACCOUNT_OPTIONS.ranks||{})[b]||[]; const el=document.getElementById('acctRank'); if(el) el.innerHTML=opts(ranks); }
-async function saveAccount(){ const payload={display_name:acctName.value, username:acctUser.value, privilege_level:acctPriv.value, service_branch:acctBranch.value, rank:acctRank.value, work_role:acctRole.value, skill_level:acctSkill.value, team:acctTeam.value, years_experience:acctYears.value, certs:acctCerts.value, degrees:acctDegrees.value, contact:acctContact.value, bio:acctBio.value}; await api('/api/accounts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); await renderAccounts(); await refreshData(); renderCommander(); }
+async function saveAccount(){ const payload={token:state.token,display_name:acctName.value, username:acctUser.value, password:acctPass.value, email:acctEmail.value, phone:acctPhone.value, privilege_level:acctPriv.value, service_branch:acctBranch.value, rank:acctRank.value, work_role:acctRole.value, skill_level:acctSkill.value, team_id:acctTeamId.value, team:acctTeamId.options[acctTeamId.selectedIndex]?.textContent || '', years_experience:acctYears.value, certs:acctCerts.value, degrees:acctDegrees.value, contact:acctContact.value, bio:acctBio.value}; await api('/api/accounts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); await refreshData(); await renderAccounts(); renderCommander(); }
+function acctSelect(id){ return `<select id="${id}"><option value="">Unassigned</option>${ACCOUNTS.map(a=>`<option value="${a.id}">${escapeHtml(a.rank||'')} ${escapeHtml(a.display_name)}</option>`).join('')}</select>`; }
+function renderTeamAdmin(){
+  document.getElementById('teamForm').innerHTML=`<select id="teamType"><option>CPT</option><option>NCPT</option></select><input id="teamNumber" placeholder="Team Number"><input id="teamName" placeholder="Team Name"><input id="teamLogo" placeholder="Picture / Logo URL"><input id="teamLocation" placeholder="Location"><input id="teamPhone" placeholder="Phone Number"><input id="teamEmail" placeholder="Email"><textarea id="teamDesc" placeholder="Description"></textarea><textarea id="teamNotes" placeholder="Notes / mission / coverage / anything pertinent"></textarea><label>Team Lead</label>${acctSelect('teamLead')}<label>Deputy Team Lead</label>${acctSelect('teamDeputy')}<label>Planner</label>${acctSelect('teamPlanner')}<label>NCOIC</label>${acctSelect('teamNcoic')}<button class="btn btn-escalate" onclick="saveTeam()">Save Team</button>`;
+  document.getElementById('teamList').innerHTML=TEAMS.map(t=>`<div class="profile-card" onclick="viewTeam('${t.id}')">${t.logo_url?`<img class="team-logo" src="${escapeHtml(t.logo_url)}">`:''}<b>${escapeHtml(t.team_type)}-${escapeHtml(t.number)} ${escapeHtml(t.name)}</b><br><span class="tl-time">${escapeHtml(t.location||'No Location')} · ${escapeHtml(t.phone||'No Phone')} · ${t.member_count||0} members</span><br>${escapeHtml(t.notes||t.description||'')}</div>`).join('');
+}
+async function saveTeam(){ const payload={token:state.token, team_type:teamType.value, number:teamNumber.value, name:teamName.value, logo_url:teamLogo.value, location:teamLocation.value, phone:teamPhone.value, email:teamEmail.value, description:teamDesc.value, notes:teamNotes.value, team_lead_id:teamLead.value, deputy_team_lead_id:teamDeputy.value, planner_id:teamPlanner.value, ncoic_id:teamNcoic.value}; await api('/api/teams',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); await refreshData(); await renderAccounts(); }
+async function viewTeam(id){ const t=await api('/api/teams/'+encodeURIComponent(id)); document.getElementById('teamList').innerHTML=`<div class="profile-card">${t.logo_url?`<img class="team-logo" src="${escapeHtml(t.logo_url)}">`:''}<b>${escapeHtml(t.team_type)}-${escapeHtml(t.number)} ${escapeHtml(t.name)}</b><br>${escapeHtml(t.location||'')} · ${escapeHtml(t.phone||'')}<br>${escapeHtml(t.description||'')}</div><h3>Members</h3>${(t.members||[]).map(a=>`<div class="profile-card"><b>${escapeHtml(a.rank||'')} ${escapeHtml(a.display_name)}</b><br><span class="tl-time">${escapeHtml(a.work_role)} · ${escapeHtml(a.skill_level)}</span></div>`).join('')||'<div class="tl-body">No members.</div>'}<button class="btn btn-expand" onclick="renderTeamAdmin()">Back To Teams</button>`; }
+function openLogin(){ document.getElementById('loginPanel').classList.add('open'); document.getElementById('loginBody').innerHTML=`<input id="loginUser" placeholder="Username / Email / Phone"><input id="loginPass" type="password" placeholder="Password"><select id="loginMethod"><option value="email">Email Code</option><option value="sms">Cell Phone Code</option></select><button class="btn btn-escalate" onclick="requestLogin()">Send 2FA Code</button><div id="loginResult"></div>`; }
+function closeLogin(){ document.getElementById('loginPanel').classList.remove('open'); }
+async function requestLogin(){ const d=await api('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:loginUser.value,password:loginPass.value,method:loginMethod.value})}).catch(e=>({error:e.message})); if(d.error){loginResult.textContent=d.error;return;} loginResult.innerHTML=`<input id="loginCode" placeholder="6-digit code" value="${d.demo_code||''}"><button class="btn btn-escalate" onclick="verifyLogin('${d.challenge_id}')">Verify</button><div class="tl-time">${escapeHtml(d.note||'Code sent')}</div>`; }
+async function verifyLogin(id){ const d=await api('/api/auth/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({challenge_id:id,code:loginCode.value})}); state.token=d.token; localStorage.setItem('spotterToken', d.token); closeLogin(); await refreshData(); renderEvents(); renderDrawer(); renderCommander(); }
+function openChat(){ document.getElementById('chatPanel').classList.add('open'); document.getElementById('chatTitle').textContent=(state.view==='commander'?'Commander':'Analyst')+' Chatbot'; }
+function closeChat(){ document.getElementById('chatPanel').classList.remove('open'); }
+async function sendChat(){ const msg=chatInput.value; if(!msg)return; chatLog.innerHTML+=`<div class="chat-msg"><b>You:</b> ${escapeHtml(msg)}</div>`; chatInput.value=''; const d=await api('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role:state.view,message:msg,token:state.token})}); chatLog.innerHTML+=`<div class="chat-msg"><b>Spotter-Shooter:</b><br>${escapeHtml(d.answer)}</div>`; chatLog.scrollTop=chatLog.scrollHeight; }
+async function goToKibana(){ const d=await api('/api/setup/kibana'); window.open(d.url,'_blank'); }
 function renderCommander() {
   renderStats();
   document.getElementById('asomList').innerHTML = CASES.map(c => `<div class="asom-line-row" onclick="openCaseLab('${escapeHtml(c.id)}')"><div class="asom-num">${escapeHtml(c.id)}</div><div class="asom-text">${escapeHtml(c.name)}</div><span class="asom-status ${c.status==='open'?'active':c.status==='closed'?'done':'pending'}">${escapeHtml(c.status)}</span></div>`).join('') || '<div class="asom-line-row"><div class="asom-text">No cases yet.</div></div>';
