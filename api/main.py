@@ -43,10 +43,78 @@ def E(data=None, error=None, meta=None):
     return {"success": error is None, "data": data, "error": error, "meta": meta or {}}
 
 
+async def migrate_db(db):
+    stmts = [
+        "alter table cases add column if not exists created_by uuid",
+        "alter table cases add column if not exists bluf text default ''",
+        "alter table cases add column if not exists five_ws jsonb default '{}'::jsonb",
+        "alter table cases add column if not exists technical_summary text default ''",
+        "alter table cases add column if not exists way_ahead text default ''",
+        "alter table cases add column if not exists final_output text default ''",
+        "alter table cases add column if not exists priority text default 'medium'",
+        "alter table case_events add column if not exists added_at timestamptz default now()",
+        "alter table case_events add column if not exists added_by uuid",
+        "alter table case_events add column if not exists note text default ''",
+        "create table if not exists accounts (id uuid primary key default gen_random_uuid(), username text unique not null, display_name text not null, privilege_level text not null default 'analyst', service_branch text default '', rank text default '', work_role text default '', skill_level text default 'basic', team text default '', bio text default '', certs text default '', degrees text default '', years_experience int default 0, contact text default '', created_at timestamptz default now(), updated_at timestamptz default now())",
+        "create table if not exists case_members (case_id uuid references cases(id) on delete cascade, account_id uuid references accounts(id) on delete cascade, role text default 'supporting analyst', joined_at timestamptz default now(), primary key(case_id, account_id))",
+        "create table if not exists case_indicators (id uuid primary key default gen_random_uuid(), case_id uuid references cases(id) on delete cascade, indicator_type text not null, value text not null, source text default 'analyst', description text default '', created_by uuid references accounts(id), created_at timestamptz default now(), unique(case_id, indicator_type, value))",
+        "create table if not exists case_timeline (id uuid primary key default gen_random_uuid(), case_id uuid references cases(id) on delete cascade, event_time timestamptz default now(), entry_type text not null default 'note', title text not null, body text default '', actor_id uuid references accounts(id), actor_name text default '', related_event_id text, related_indicator text, created_at timestamptz default now())",
+        "create table if not exists enrichment_configs (id uuid primary key default gen_random_uuid(), name text unique not null, provider_type text not null, enabled boolean default false, base_url text default '', api_key_ref text default '', notes text default '', config jsonb default '{}'::jsonb, created_at timestamptz default now(), updated_at timestamptz default now())",
+        "insert into enrichment_configs(name, provider_type, enabled, base_url, notes, config) values ('Local OpenCTI','opencti',false,'http://opencti:8080','Local OpenCTI enrichment. Configure URL/token before enabling.', '{\"token_env\":\"OPENCTI_TOKEN\"}'::jsonb) on conflict(name) do nothing",
+        "insert into enrichment_configs(name, provider_type, enabled, base_url, notes, config) values ('VirusTotal','virustotal',false,'https://www.virustotal.com/api/v3','Optional cloud enrichment. Disabled by default; requires API key.', '{\"api_key_env\":\"VIRUSTOTAL_API_KEY\"}'::jsonb) on conflict(name) do nothing",
+        "insert into enrichment_configs(name, provider_type, enabled, base_url, notes, config) values ('Custom HTTP Enrichment','custom_http',false,'','Operator-defined HTTP enrichment endpoint. Disabled by default.', '{}'::jsonb) on conflict(name) do nothing",
+    ]
+    async with db.acquire() as conn:
+        for stmt in stmts:
+            await conn.execute(stmt)
+
+
+RANKS = {
+    "army": ["PVT", "PV2", "PFC", "SPC", "CPL", "SGT", "SSG", "SFC", "MSG", "1SG", "SGM", "CSM", "SMA", "WO1", "CW2", "CW3", "CW4", "CW5", "2LT", "1LT", "CPT", "MAJ", "LTC", "COL", "BG", "MG", "LTG", "GEN"],
+    "airforce": ["AB", "Amn", "A1C", "SrA", "SSgt", "TSgt", "MSgt", "SMSgt", "CMSgt", "CCM", "CMSAF", "2d Lt", "1st Lt", "Capt", "Maj", "Lt Col", "Col", "Brig Gen", "Maj Gen", "Lt Gen", "Gen"],
+    "coastguard": ["SR", "SA", "SN", "PO3", "PO2", "PO1", "CPO", "SCPO", "MCPO", "CMC", "MCPOCG", "ENS", "LTJG", "LT", "LCDR", "CDR", "CAPT", "RDML", "RADM", "VADM", "ADM"],
+    "navy": ["SR", "SA", "SN", "PO3", "PO2", "PO1", "CPO", "SCPO", "MCPO", "CMC", "MCPON", "ENS", "LTJG", "LT", "LCDR", "CDR", "CAPT", "RDML", "RADM", "VADM", "ADM", "FADM"],
+    "marines": ["Pvt", "PFC", "LCpl", "Cpl", "Sgt", "SSgt", "GySgt", "MSgt", "1stSgt", "MGySgt", "SgtMaj", "SMMC", "WO", "CWO2", "CWO3", "CWO4", "CWO5", "2ndLt", "1stLt", "Capt", "Maj", "LtCol", "Col", "BGen", "MajGen", "LtGen", "Gen"],
+}
+WORK_ROLES = ["analytic support officer", "data engineer", "host analyst", "network analyst", "planner", "cyber integration technician", "master gunner", "team lead", "commander"]
+SKILL_LEVELS = ["basic", "senior", "master"]
+PRIVILEGE_LEVELS = ["admin", "analyst"]
+
+
+def extract_indicators_from_event(event_row):
+    vals = []
+    for x in _jsonish(event_row.get("enrichment") if isinstance(event_row, dict) else event_row["enrichment"]):
+        if isinstance(x, dict):
+            v = str(x.get("value") or x.get("val") or "").strip()
+            if v and len(v) < 256:
+                vals.append((str(x.get("label") or "observable").lower(), v))
+    raw = event_row.get("raw_log_sample") if isinstance(event_row, dict) else event_row["raw_log_sample"]
+    text = raw if isinstance(raw, str) else json.dumps(raw, default=str)
+    for ip in sorted(set(re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", text))):
+        vals.append(("ip", ip))
+    for dom in sorted(set(re.findall(r"\b[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b", text))):
+        if not dom.replace('.', '').isdigit() and len(dom) < 180:
+            vals.append(("domain", dom.lower()))
+    for proc in sorted(set(re.findall(r"\b[a-zA-Z0-9_\-]+\.exe\b", text, re.I))):
+        vals.append(("process", proc.lower()))
+    seen, out = set(), []
+    for t, v in vals:
+        key = (t, v)
+        if key not in seen:
+            seen.add(key); out.append({"type": t, "value": v})
+    return out[:40]
+
+
+migrated = False
+
+
 async def P():
-    global pool
+    global pool, migrated
     if pool is None:
         pool = await asyncpg.create_pool(settings.database_url, min_size=1, max_size=10)
+    if not migrated:
+        await migrate_db(pool)
+        migrated = True
     return pool
 
 
@@ -443,46 +511,251 @@ async def dismiss(event_id: str):
     return E({"event_id": event_id, "status": "dismissed"})
 
 
+@app.patch("/api/events/{event_id}/dismiss")
+async def dismiss(event_id: str):
+    await (await P()).execute("update events set status='dismissed', updated_at=now() where event_id=$1", event_id)
+    return E({"event_id": event_id, "status": "dismissed"})
+
+
+async def ensure_default_account(p):
+    row = await p.fetchrow("select * from accounts order by created_at limit 1")
+    if row:
+        return row
+    return await p.fetchrow("insert into accounts(username,display_name,privilege_level,work_role,skill_level,team,bio) values('analyst','Analyst','analyst','network analyst','basic','','Default analyst profile') returning *")
+
+
+async def build_case_final(p, case_uuid):
+    c = await p.fetchrow("select * from cases where id=$1", case_uuid)
+    members = await p.fetch("select a.display_name,a.rank,a.service_branch,a.work_role,a.skill_level,a.team,cm.role from case_members cm join accounts a on a.id=cm.account_id where cm.case_id=$1 order by cm.joined_at", case_uuid)
+    events = await p.fetch("select e.* from case_events ce join events e on e.id=ce.event_id where ce.case_id=$1 order by ce.added_at", case_uuid)
+    inds = await p.fetch("select indicator_type,value from case_indicators where case_id=$1 order by created_at", case_uuid)
+    lead = "; ".join([f"{m['rank']} {m['display_name']} ({m['work_role']}, {m['skill_level']}, {m['team']})".strip() for m in members]) or c["owner"]
+    sev = events[0]["severity"] if events else "medium"
+    titles = "; ".join([e["title"] for e in events[:5]]) or c["name"]
+    indicators = ", ".join([f"{i['indicator_type']}:{i['value']}" for i in inds[:12]]) or "none confirmed"
+    bluf = c["bluf"] or f"BLUF/SO WHAT: {sev.upper()} case {c['case_id']} requires analyst action because correlated alerts indicate {c['name']}."
+    five_ws = _jsonish(c["five_ws"])
+    if not isinstance(five_ws, dict) or not five_ws:
+        five_ws = {
+            "who": "Unknown operator / attribution pending",
+            "what": titles,
+            "when": ser(c["created_at"]),
+            "where": indicators,
+            "why": "Determine scope, impact, and whether activity represents compromise.",
+        }
+    technical = c["technical_summary"] or c["narrative_summary"] or "Technical summary pending analyst validation."
+    way = c["way_ahead"] or "Validate indicators, pivot across related telemetry, request network-owner context, scope affected assets/users, and decide containment/reporting actions."
+    final = f"{bluf}\n\n5 Ws:\n- Who: {five_ws.get('who','')}\n- What: {five_ws.get('what','')}\n- When: {five_ws.get('when','')}\n- Where: {five_ws.get('where','')}\n- Why: {five_ws.get('why','')}\n\nTechnical Summary:\n{technical}\n\nWay Ahead:\n{way}\n\nAnalyst / Work Role:\n{lead}"
+    await p.execute("update cases set bluf=$2,five_ws=$3,technical_summary=$4,way_ahead=$5,final_output=$6,updated_at=now() where id=$1", case_uuid, bluf, json.dumps(five_ws), technical, way, final)
+    return final
+
+
 @app.patch("/api/events/{event_id}/escalate")
-async def escalate(event_id: str):
+async def escalate(event_id: str, payload: dict = {}):
     p = await P()
+    actor_id = payload.get("actor_id") if payload else None
+    actor = await p.fetchrow("select * from accounts where id=$1", uuid.UUID(actor_id)) if actor_id else await ensure_default_account(p)
     e = await p.fetchrow("select * from events where event_id=$1", event_id)
     cid = "CASE-" + event_id.split("-")[-1]
-    if e:
-        enr = _jsonish(e["enrichment"])
-        iocs = [x.get("value") for x in enr if isinstance(x, dict) and x.get("value")]
-        await p.execute(
-            "insert into cases(case_id,session_id,name,owner,narrative_summary,ioc_tags,status) values($1,$2,$3,'SOC Lead',$4,$5,'open') on conflict(case_id) do nothing",
-            cid,
-            e["session_id"],
-            e["title"],
-            e["explanation"],
-            json.dumps(iocs),
+    if not e:
+        return E({"case_id": cid}, error="event not found")
+    case = await p.fetchrow("select * from cases where case_id=$1", cid)
+    if not case:
+        case = await p.fetchrow(
+            "insert into cases(case_id,session_id,name,owner,narrative_summary,ioc_tags,status,created_by) values($1,$2,$3,$4,$5,'[]'::jsonb,'open',$6) returning *",
+            cid, e["session_id"], e["title"], actor["display_name"], e["explanation"], actor["id"],
         )
-        await p.execute("update events set status='escalated', updated_at=now() where event_id=$1", event_id)
-    return E({"case_id": cid})
+    await p.execute("insert into case_events(case_id,event_id,added_by,note) values($1,$2,$3,$4) on conflict(case_id,event_id) do update set added_at=now(), added_by=excluded.added_by", case["id"], e["id"], actor["id"], "Escalated from alert")
+    await p.execute("insert into case_members(case_id,account_id,role) values($1,$2,$3) on conflict(case_id,account_id) do update set role=excluded.role", case["id"], actor["id"], actor["work_role"] or "analyst")
+    await p.execute("update events set status='escalated', suggested_case_link=$2, updated_at=now() where event_id=$1", event_id, case["id"])
+    await p.execute("insert into case_timeline(case_id,entry_type,title,body,actor_id,actor_name,related_event_id) values($1,'alert','Alert escalated',$2,$3,$4,$5)", case["id"], e["title"], actor["id"], actor["display_name"], event_id)
+    for ind in extract_indicators_from_event(e):
+        await p.execute("insert into case_indicators(case_id,indicator_type,value,source,description,created_by) values($1,$2,$3,'alert',$4,$5) on conflict(case_id,indicator_type,value) do nothing", case["id"], ind["type"], ind["value"], event_id, actor["id"])
+    await build_case_final(p, case["id"])
+    return E({"case_id": case["case_id"], "case_uuid": str(case["id"]), "status": "open"})
+
+
+def case_obj(r, event_count=0, member_count=0):
+    return {
+        "uuid": ser(r["id"]), "id": r["case_id"], "case_id": r["case_id"], "name": r["name"], "owner": r["owner"],
+        "summary": r["narrative_summary"], "status": r["status"], "iocs": _jsonish(r["ioc_tags"]), "opened": ser(r["created_at"]),
+        "updated_at": ser(r["updated_at"]), "events": event_count, "members": member_count, "bluf": r["bluf"],
+        "five_ws": _jsonish(r["five_ws"]), "technical_summary": r["technical_summary"], "way_ahead": r["way_ahead"], "final_output": r["final_output"]
+    }
 
 
 @app.get("/api/cases")
 async def cases(session_id: Optional[str] = None):
     p = await P()
-    if session_id and session_id != "demo":
-        rows = await p.fetch("select * from cases where session_id=$1 order by created_at desc", uuid.UUID(session_id))
-    else:
-        rows = await p.fetch("select * from cases order by created_at desc")
-    return E([
-        {
-            "id": r["case_id"],
-            "name": r["name"],
-            "owner": r["owner"],
-            "summary": r["narrative_summary"],
-            "status": r["status"],
-            "iocs": _jsonish(r["ioc_tags"]),
-            "opened": ser(r["created_at"]),
-            "events": 1,
-        }
-        for r in rows
-    ])
+    rows = await p.fetch("""
+        select c.*, count(distinct ce.event_id)::int as event_count, count(distinct cm.account_id)::int as member_count
+        from cases c
+        left join case_events ce on ce.case_id=c.id
+        left join case_members cm on cm.case_id=c.id
+        where ($1::uuid is null or c.session_id=$1)
+        group by c.id order by c.updated_at desc, c.created_at desc
+    """, None if not session_id or session_id == "demo" else uuid.UUID(session_id))
+    return E([case_obj(r, r["event_count"], r["member_count"]) for r in rows])
+
+
+@app.get("/api/cases/{case_id}")
+async def case_detail(case_id: str):
+    p = await P()
+    c = await p.fetchrow("select * from cases where case_id=$1 or id::text=$1", case_id)
+    if not c:
+        return E(None, error="case not found")
+    events_rows = await p.fetch("select e.* from case_events ce join events e on e.id=ce.event_id where ce.case_id=$1 order by ce.added_at desc", c["id"])
+    members = await p.fetch("select a.*, cm.role, cm.joined_at from case_members cm join accounts a on a.id=cm.account_id where cm.case_id=$1 order by cm.joined_at", c["id"])
+    indicators = await p.fetch("select * from case_indicators where case_id=$1 order by created_at desc", c["id"])
+    timeline = await p.fetch("select * from case_timeline where case_id=$1 order by event_time desc, created_at desc", c["id"])
+    related = {}
+    for ind in indicators:
+        related[ind["value"]] = await indicator_related(p, ind["value"])
+    return E({**case_obj(c, len(events_rows), len(members)), "events": [ev(e) for e in events_rows], "members": [rd(m) for m in members], "indicators": [rd(i) for i in indicators], "timeline": [rd(t) for t in timeline], "indicator_related": related})
+
+
+async def indicator_related(p, value: str):
+    like = f"%{value}%"
+    cases_rows = await p.fetch("select distinct c.case_id,c.name,c.status from cases c left join case_indicators ci on ci.case_id=c.id where ci.value=$1 or c.narrative_summary ilike $2 or c.final_output ilike $2 limit 12", value, like)
+    event_rows = await p.fetch("select event_id,title,severity,status from events where raw_log_sample ilike $1 or title ilike $1 or explanation ilike $1 limit 12", like)
+    return {"cases": [dict(r) for r in cases_rows], "events": [dict(r) for r in event_rows]}
+
+
+@app.get("/api/indicators/{value}/related")
+async def indicator_related_api(value: str):
+    return E(await indicator_related(await P(), value))
+
+
+@app.post("/api/cases/{case_id}/events/{event_id}")
+async def add_event_to_case(case_id: str, event_id: str, payload: dict = {}):
+    p = await P()
+    c = await p.fetchrow("select * from cases where case_id=$1 or id::text=$1", case_id)
+    e = await p.fetchrow("select * from events where event_id=$1", event_id)
+    if not c or not e:
+        return E(None, error="case or event not found")
+    actor_id = payload.get("actor_id") if payload else None
+    actor = await p.fetchrow("select * from accounts where id=$1", uuid.UUID(actor_id)) if actor_id else await ensure_default_account(p)
+    await p.execute("insert into case_events(case_id,event_id,added_by,note) values($1,$2,$3,$4) on conflict(case_id,event_id) do nothing", c["id"], e["id"], actor["id"], payload.get("note", "Added to existing case"))
+    await p.execute("update events set status='escalated', suggested_case_link=$2 where event_id=$1", event_id, c["id"])
+    await p.execute("insert into case_timeline(case_id,entry_type,title,body,actor_id,actor_name,related_event_id) values($1,'alert','New alert accepted into case',$2,$3,$4,$5)", c["id"], e["title"], actor["id"], actor["display_name"], event_id)
+    for ind in extract_indicators_from_event(e):
+        await p.execute("insert into case_indicators(case_id,indicator_type,value,source,description,created_by) values($1,$2,$3,'alert',$4,$5) on conflict(case_id,indicator_type,value) do nothing", c["id"], ind["type"], ind["value"], event_id, actor["id"])
+    await build_case_final(p, c["id"])
+    return await case_detail(case_id)
+
+
+@app.post("/api/cases/{case_id}/members")
+async def add_case_member(case_id: str, payload: dict):
+    p = await P()
+    c = await p.fetchrow("select * from cases where case_id=$1 or id::text=$1", case_id)
+    if not c:
+        return E(None, error="case not found")
+    account_id = payload.get("account_id")
+    if not account_id:
+        return E(None, error="account_id required")
+    a = await p.fetchrow("select * from accounts where id=$1", uuid.UUID(account_id))
+    if not a:
+        return E(None, error="account not found")
+    await p.execute("insert into case_members(case_id,account_id,role) values($1,$2,$3) on conflict(case_id,account_id) do update set role=excluded.role", c["id"], a["id"], payload.get("role") or a["work_role"] or "analyst")
+    await p.execute("insert into case_timeline(case_id,entry_type,title,body,actor_id,actor_name) values($1,'membership','Analyst joined case',$2,$3,$4)", c["id"], payload.get("role") or a["work_role"], a["id"], a["display_name"])
+    await build_case_final(p, c["id"])
+    return await case_detail(case_id)
+
+
+@app.post("/api/cases/{case_id}/timeline")
+async def add_case_timeline(case_id: str, payload: dict):
+    p = await P()
+    c = await p.fetchrow("select * from cases where case_id=$1 or id::text=$1", case_id)
+    if not c:
+        return E(None, error="case not found")
+    actor = None
+    if payload.get("actor_id"):
+        actor = await p.fetchrow("select * from accounts where id=$1", uuid.UUID(payload["actor_id"]))
+    r = await p.fetchrow("insert into case_timeline(case_id,entry_type,title,body,actor_id,actor_name,related_indicator) values($1,$2,$3,$4,$5,$6,$7) returning *", c["id"], payload.get("entry_type", "note"), payload.get("title", "Analyst note"), payload.get("body", ""), actor["id"] if actor else None, actor["display_name"] if actor else payload.get("actor_name", "Analyst"), payload.get("related_indicator"))
+    await p.execute("update cases set updated_at=now() where id=$1", c["id"])
+    return E(rd(r))
+
+
+@app.post("/api/cases/{case_id}/indicators")
+async def add_case_indicator(case_id: str, payload: dict):
+    p = await P()
+    c = await p.fetchrow("select * from cases where case_id=$1 or id::text=$1", case_id)
+    if not c:
+        return E(None, error="case not found")
+    r = await p.fetchrow("insert into case_indicators(case_id,indicator_type,value,source,description,created_by) values($1,$2,$3,$4,$5,$6) on conflict(case_id,indicator_type,value) do update set description=excluded.description returning *", c["id"], payload.get("indicator_type", "observable"), payload["value"], payload.get("source", "analyst"), payload.get("description", ""), uuid.UUID(payload["created_by"]) if payload.get("created_by") else None)
+    await p.execute("insert into case_timeline(case_id,entry_type,title,body,related_indicator) values($1,'indicator','Indicator added',$2,$3)", c["id"], f"{r['indicator_type']}: {r['value']}", r["value"])
+    await build_case_final(p, c["id"])
+    return E(rd(r))
+
+
+@app.post("/api/cases/{case_id}/finalize")
+async def finalize_case(case_id: str, payload: dict = {}):
+    p = await P()
+    c = await p.fetchrow("select * from cases where case_id=$1 or id::text=$1", case_id)
+    if not c:
+        return E(None, error="case not found")
+    fields = []
+    vals = []
+    for key in ["bluf", "technical_summary", "way_ahead", "status"]:
+        if key in payload:
+            vals.append(payload[key]); fields.append(f"{key}=${len(vals)}")
+    if "five_ws" in payload:
+        vals.append(json.dumps(payload["five_ws"])); fields.append(f"five_ws=${len(vals)}")
+    if fields:
+        vals.append(c["id"])
+        await p.execute(f"update cases set {', '.join(fields)}, updated_at=now() where id=${len(vals)}", *vals)
+    final = await build_case_final(p, c["id"])
+    return E({"case_id": c["case_id"], "final_output": final})
+
+
+@app.get("/api/accounts/options")
+async def account_options():
+    return E({"ranks": RANKS, "work_roles": WORK_ROLES, "skill_levels": SKILL_LEVELS, "privilege_levels": PRIVILEGE_LEVELS})
+
+
+@app.get("/api/accounts")
+async def accounts():
+    rows = await (await P()).fetch("select * from accounts order by display_name")
+    return E([rd(r) for r in rows])
+
+
+@app.post("/api/accounts")
+async def create_account(payload: dict):
+    p = await P()
+    username = payload.get("username") or snake(payload.get("display_name", "analyst"))
+    r = await p.fetchrow("""
+        insert into accounts(username,display_name,privilege_level,service_branch,rank,work_role,skill_level,team,bio,certs,degrees,years_experience,contact)
+        values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        on conflict(username) do update set display_name=excluded.display_name, privilege_level=excluded.privilege_level, service_branch=excluded.service_branch, rank=excluded.rank, work_role=excluded.work_role, skill_level=excluded.skill_level, team=excluded.team, bio=excluded.bio, certs=excluded.certs, degrees=excluded.degrees, years_experience=excluded.years_experience, contact=excluded.contact, updated_at=now()
+        returning *
+    """, username, payload.get("display_name", username), payload.get("privilege_level", "analyst"), payload.get("service_branch", ""), payload.get("rank", ""), payload.get("work_role", "network analyst"), payload.get("skill_level", "basic"), payload.get("team", ""), payload.get("bio", ""), payload.get("certs", ""), payload.get("degrees", ""), int(payload.get("years_experience") or 0), payload.get("contact", ""))
+    return E(rd(r))
+
+
+@app.get("/api/accounts/{account_id}")
+async def account_detail(account_id: str):
+    p = await P()
+    a = await p.fetchrow("select * from accounts where id=$1 or username=$2", uuid.UUID(account_id) if re.match(r"^[0-9a-f-]{36}$", account_id, re.I) else None, account_id)
+    if not a:
+        return E(None, error="account not found")
+    cases_rows = await p.fetch("select c.case_id,c.name,c.status,c.updated_at,cm.role from case_members cm join cases c on c.id=cm.case_id where cm.account_id=$1 order by c.updated_at desc", a["id"])
+    return E({**rd(a), "cases": [dict(r) for r in cases_rows]})
+
+
+@app.get("/api/enrichment/configs")
+async def enrichment_configs():
+    rows = await (await P()).fetch("select * from enrichment_configs order by name")
+    return E([rd(r) for r in rows])
+
+
+@app.post("/api/enrichment/configs")
+async def upsert_enrichment(payload: dict):
+    r = await (await P()).fetchrow("""
+        insert into enrichment_configs(name,provider_type,enabled,base_url,api_key_ref,notes,config) values($1,$2,$3,$4,$5,$6,$7)
+        on conflict(name) do update set provider_type=excluded.provider_type, enabled=excluded.enabled, base_url=excluded.base_url, api_key_ref=excluded.api_key_ref, notes=excluded.notes, config=excluded.config, updated_at=now()
+        returning *
+    """, payload["name"], payload.get("provider_type", "custom_http"), bool(payload.get("enabled", False)), payload.get("base_url", ""), payload.get("api_key_ref", ""), payload.get("notes", ""), json.dumps(payload.get("config", {})))
+    return E(rd(r))
 
 
 @app.get("/api/agents")

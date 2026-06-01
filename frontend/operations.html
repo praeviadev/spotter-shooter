@@ -1070,6 +1070,40 @@ body::before {
   border-radius: 50%;
   flex-shrink: 0;
 }
+
+.case-lab { position: fixed; inset: 70px 26px 78px 26px; background: var(--bg); border:1px solid var(--border); z-index:180; display:none; grid-template-columns: 340px 1fr 360px; gap:0; box-shadow: 0 0 0 9999px rgba(0,0,0,.55); }
+.case-lab.open { display:grid; }
+.case-pane { border-right:1px solid var(--border); overflow:auto; background:var(--surface); }
+.case-main { overflow:auto; background:var(--bg); padding:18px; }
+.case-side { overflow:auto; background:var(--surface); border-left:1px solid var(--border); }
+.case-lab-head { padding:12px 14px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; background:var(--surface2); }
+.case-lab-title { font-family:var(--display); font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:var(--amber); }
+.case-close { background:transparent; border:1px solid var(--border); color:var(--text-dim); padding:5px 9px; cursor:pointer; }
+.case-mini { padding:11px 14px; border-bottom:1px solid var(--border); cursor:pointer; }
+.case-mini:hover,.case-mini.active { background:rgba(232,164,39,.08); }
+.case-mini-id { font-family:var(--mono); color:var(--text-muted); font-size:10px; }
+.case-mini-name { font-family:var(--display); font-weight:700; text-transform:uppercase; color:var(--text); margin-top:3px; }
+.case-section { background:var(--surface); border:1px solid var(--border); margin-bottom:14px; }
+.case-section h3 { font-family:var(--display); color:var(--text-dim); letter-spacing:.12em; text-transform:uppercase; font-size:13px; padding:10px 12px; border-bottom:1px solid var(--border); background:var(--surface2); }
+.case-section-body { padding:12px; }
+.bluf { border-left:3px solid var(--amber); padding:12px; background:var(--amber-glow); color:var(--text); line-height:1.5; }
+.timeline { position:relative; padding:8px 0 8px 18px; }
+.timeline:before { content:''; position:absolute; left:7px; top:0; bottom:0; width:1px; background:var(--border-active); }
+.tl-item { position:relative; padding:0 0 14px 16px; }
+.tl-item:before { content:''; position:absolute; left:-15px; top:4px; width:9px; height:9px; border-radius:50%; background:var(--blue); box-shadow:0 0 6px var(--blue); }
+.tl-time { font-family:var(--mono); font-size:10px; color:var(--text-muted); }
+.tl-title { font-family:var(--display); text-transform:uppercase; font-weight:700; color:var(--text); }
+.tl-body { color:var(--text-dim); font-size:12px; line-height:1.45; }
+.indicator-pill { display:inline-block; margin:3px; padding:4px 8px; border:1px solid var(--blue-dim); background:var(--blue-glow); color:var(--blue); font-family:var(--mono); font-size:10px; cursor:pointer; position:relative; }
+.indicator-pill:hover { border-color:var(--amber-dim); color:var(--amber); }
+.relation-pop { position:fixed; max-width:360px; background:#050607; border:1px solid var(--amber-dim); padding:10px; color:var(--text); z-index:300; font-family:var(--mono); font-size:10px; display:none; }
+.case-form input,.case-form textarea,.case-form select { width:100%; background:#050607; color:var(--text); border:1px solid var(--border); padding:7px; margin-bottom:7px; font-family:var(--mono); font-size:11px; }
+.case-form textarea { min-height:70px; }
+.case-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.account-panel { position:fixed; inset:70px 40px 70px 40px; background:var(--surface); border:1px solid var(--border); z-index:190; display:none; overflow:auto; box-shadow:0 0 0 9999px rgba(0,0,0,.55); }
+.account-panel.open { display:block; }
+.profile-card { padding:10px; border:1px solid var(--border); margin:8px 0; background:var(--surface2); }
+
 </style>
 </head>
 <body>
@@ -1085,6 +1119,7 @@ body::before {
   <div class="header-center">
     <button class="role-btn active" id="analystBtn" onclick="switchView('analyst')">Analyst View</button>
     <button class="role-btn" id="commanderBtn" onclick="switchView('commander')">Commander View</button>
+    <button class="role-btn" onclick="openAccounts()">Accounts</button>
   </div>
 
   <div class="header-right">
@@ -1134,13 +1169,13 @@ body::before {
   <!-- Bottom bar -->
   <div class="analyst-bottom" style="position:fixed;bottom:0;left:0;right:0;z-index:100;">
     <div class="bottom-stats">
-      <div class="bottom-stat">Events Today <span class="bottom-stat-val amber">23</span></div>
-      <div class="bottom-stat">Escalated <span class="bottom-stat-val red">4</span></div>
-      <div class="bottom-stat">Dismissed <span class="bottom-stat-val">11</span></div>
-      <div class="bottom-stat">Cases Open <span class="bottom-stat-val green">4</span></div>
+      <div class="bottom-stat">Events <span class="bottom-stat-val amber" id="statEvents">0</span></div>
+      <div class="bottom-stat">Escalated <span class="bottom-stat-val red" id="statEscalated">0</span></div>
+      <div class="bottom-stat">Dismissed <span class="bottom-stat-val" id="statDismissed">0</span></div>
+      <div class="bottom-stat">Cases Open <span class="bottom-stat-val green" id="statCases">0</span></div>
     </div>
     <button class="cases-drawer-btn" onclick="toggleDrawer()">
-      Active Cases <span class="case-count-pill">4</span>
+      Active Cases <span class="case-count-pill" id="caseCountPill">0</span>
     </button>
   </div>
 </div>
@@ -1160,66 +1195,33 @@ body::before {
     <div class="kpi-row">
       <div class="kpi-card amber-accent">
         <div class="kpi-label">ASOM Lines Completed</div>
-        <div class="kpi-value amber">12</div>
+        <div class="kpi-value amber" id="kpiAsom">0</div>
         <div class="kpi-sub"><span class="kpi-delta up">+3</span> since 0600</div>
       </div>
       <div class="kpi-card red-accent">
         <div class="kpi-label">Threat Actors Found</div>
-        <div class="kpi-value red">3</div>
+        <div class="kpi-value red" id="kpiActors">0</div>
         <div class="kpi-sub"><span class="kpi-delta up">+1</span> new today</div>
       </div>
       <div class="kpi-card blue-accent">
         <div class="kpi-label">Active Cases</div>
-        <div class="kpi-value blue">4</div>
+        <div class="kpi-value blue" id="kpiActiveCases">0</div>
         <div class="kpi-sub">2 awaiting analyst</div>
       </div>
       <div class="kpi-card green-accent">
         <div class="kpi-label">Completed Cases</div>
-        <div class="kpi-value green">7</div>
+        <div class="kpi-value green" id="kpiCompletedCases">0</div>
         <div class="kpi-sub"><span class="kpi-delta dn">+2</span> closed today</div>
       </div>
       <div class="kpi-card purple-accent">
         <div class="kpi-label">Events (24h)</div>
-        <div class="kpi-value purple">23</div>
+        <div class="kpi-value purple" id="kpiEvents">0</div>
         <div class="kpi-sub">4 critical · 8 high</div>
       </div>
     </div>
 
     <!-- Analyst Status Row -->
-    <div class="analyst-status-row">
-      <div class="analyst-card">
-        <div class="analyst-avatar">MR</div>
-        <div>
-          <div class="analyst-name">M. Rivera</div>
-          <div class="analyst-load">6 events · 2 cases</div>
-        </div>
-        <div class="analyst-status-dot" style="background:var(--green);box-shadow:0 0 5px var(--green)"></div>
-      </div>
-      <div class="analyst-card">
-        <div class="analyst-avatar">JK</div>
-        <div>
-          <div class="analyst-name">J. Kim</div>
-          <div class="analyst-load">9 events · 1 case</div>
-        </div>
-        <div class="analyst-status-dot" style="background:var(--green);box-shadow:0 0 5px var(--green)"></div>
-      </div>
-      <div class="analyst-card">
-        <div class="analyst-avatar">TP</div>
-        <div>
-          <div class="analyst-name">T. Patel</div>
-          <div class="analyst-load">5 events · 1 case</div>
-        </div>
-        <div class="analyst-status-dot" style="background:var(--amber)"></div>
-      </div>
-      <div class="analyst-card">
-        <div class="analyst-avatar">AL</div>
-        <div>
-          <div class="analyst-name">A. Larsson</div>
-          <div class="analyst-load">Offline</div>
-        </div>
-        <div class="analyst-status-dot" style="background:var(--text-muted)"></div>
-      </div>
-    </div>
+    <div class="analyst-status-row" id="analystStatusRow"></div>
 
     <!-- Main grid: ASOM + Threat Actors -->
     <div class="cmd-grid">
@@ -1227,7 +1229,7 @@ body::before {
       <div class="cmd-card">
         <div class="cmd-card-header">
           <div class="cmd-card-title amber-bar">ASOM Lines</div>
-          <span style="font-family:var(--mono);font-size:10px;color:var(--text-muted)">12 / 18 complete</span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text-muted)" id="asomCountLabel">0 / 0 complete</span>
         </div>
         <div class="cmd-card-body">
           <div class="asom-line-list" id="asomList"></div>
@@ -1238,7 +1240,7 @@ body::before {
       <div class="cmd-card">
         <div class="cmd-card-header">
           <div class="cmd-card-title red-bar">Threat Actors</div>
-          <span style="font-family:var(--mono);font-size:10px;color:var(--red)">3 identified</span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--red)" id="actorCountLabel">0 identified</span>
         </div>
         <div class="cmd-card-body">
           <div class="actor-list" id="actorList"></div>
@@ -1292,6 +1294,20 @@ body::before {
   <div class="drawer-body" id="drawerBody"></div>
 </div>
 
+<div class="case-lab" id="caseLab">
+  <div class="case-pane"><div class="case-lab-head"><div class="case-lab-title">Cases</div><button class="case-close" onclick="closeCaseLab()">✕</button></div><div id="caseListPane"></div></div>
+  <div class="case-main" id="caseMain"><div class="detail-empty"><div class="detail-empty-icon">◇</div><div class="detail-empty-text">Select a case</div></div></div>
+  <div class="case-side" id="caseSide"></div>
+</div>
+<div class="relation-pop" id="relationPop"></div>
+<div class="account-panel" id="accountPanel">
+  <div class="case-lab-head"><div class="case-lab-title">Accounts / Profiles</div><button class="case-close" onclick="closeAccounts()">✕</button></div>
+  <div class="case-section-body case-grid2">
+    <div class="case-section"><h3>Create / Update Account</h3><div class="case-section-body case-form" id="accountForm"></div></div>
+    <div class="case-section"><h3>Profiles</h3><div class="case-section-body" id="accountList"></div></div>
+  </div>
+</div>
+
 
 <script>
 const params = new URLSearchParams(location.search);
@@ -1307,6 +1323,9 @@ let ASOM_LINES = [
 let ACTORS = [{ name:'Unknown Operator', detail:'Attribution pending analyst validation', conf:'TBD' }];
 let FEED = [];
 let AGENT_TABLE = [];
+let ACCOUNTS = [];
+let ACCOUNT_OPTIONS = {};
+let SELECTED_CASE = null;
 
 function escapeHtml(v) { return String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c])); }
 function compactTime(v) { try { return new Date(v).toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'}); } catch { return v || ''; } }
@@ -1333,10 +1352,12 @@ function normalizeEvent(ev) {
     status: ev.status || 'new'
   };
 }
-function normalizeCase(c) { return { id:c.id || c.case_id, name:c.name || 'Untitled Case', status:c.status || 'open', owner:c.owner || 'Unassigned', summary:c.summary || c.narrative_summary || '', iocs:c.iocs || [], opened:compactTime(c.opened || c.created_at), events:c.events || 1 }; }
+function normalizeCase(c) { return { uuid:c.uuid, id:c.id || c.case_id, name:c.name || 'Untitled Case', status:c.status || 'open', owner:c.owner || 'Unassigned', summary:c.summary || c.narrative_summary || '', iocs:c.iocs || [], opened:compactTime(c.opened || c.created_at), events: c.events || 0, members:c.members || 0, bluf:c.bluf||'', final_output:c.final_output||'' }; }
 async function refreshData() {
   EVENTS = (await api('/api/events?limit=100&session_id=' + encodeURIComponent(state.sessionId)).catch(() => [])).map(normalizeEvent);
   CASES = (await api('/api/cases?session_id=' + encodeURIComponent(state.sessionId)).catch(() => [])).map(normalizeCase);
+  ACCOUNTS = await api('/api/accounts').catch(() => []);
+  ACCOUNT_OPTIONS = await api('/api/accounts/options').catch(() => ({}));
   FEED = EVENTS.map(ev => ({ time:ev.time, color:ev.sev==='crit'?'red':ev.sev==='high'?'amber':ev.sev==='medium'?'blue':'green', agent:ev.agent, text:ev.title, tag:ev.sevLabel }));
   const counts = {}; EVENTS.forEach(ev => counts[ev.agent] = (counts[ev.agent] || 0) + 1);
   AGENT_TABLE = Object.entries(counts).map(([agent,count]) => ({ agent, count, status:'active' }));
@@ -1352,6 +1373,13 @@ function filteredEventEntries() {
     return severityOk && searchOk;
   });
 }
+function renderStats() {
+  const esc = EVENTS.filter(e=>e.status==='escalated').length, dis = EVENTS.filter(e=>e.status==='dismissed').length;
+  const openCases = CASES.filter(c=>c.status!=='closed').length;
+  const set=(id,v)=>{const el=document.getElementById(id); if(el) el.textContent=v};
+  set('statEvents', EVENTS.length); set('statEscalated', esc); set('statDismissed', dis); set('statCases', openCases); set('caseCountPill', openCases);
+  set('kpiEvents', EVENTS.length); set('kpiActiveCases', openCases); set('kpiCompletedCases', CASES.filter(c=>c.status==='closed').length); set('kpiActors', '0'); set('actorCountLabel','0 identified');
+}
 function renderEvents() {
   const list = document.getElementById('eventList'); list.innerHTML = '';
   const entries = filteredEventEntries();
@@ -1362,11 +1390,10 @@ function renderEvents() {
     list.appendChild(row);
   });
   if (!entries.length) list.innerHTML = '<div style="padding:18px;color:var(--text-muted);font-family:var(--mono);text-transform:uppercase;letter-spacing:.08em;">No alerts match current filters.</div>';
-  const active = EVENTS.filter(e => e.status !== 'dismissed').length;
-  const stat = [...document.querySelectorAll('.stat-card')].find(x => x.textContent.includes('Events Today'))?.querySelector('.stat-value'); if (stat) stat.textContent = active;
   const hint = document.getElementById('alertSearchHint');
   if (hint) hint.textContent = `Showing ${entries.length} of ${EVENTS.length} alerts` + (state.alertSearch ? ` // filter: ${state.alertSearch}` : '');
   const count = document.querySelector('.toolbar-count'); if (count) count.textContent = `${entries.length} shown`;
+  renderStats();
 }
 function applyAlertFilters() { state.alertSearch = document.getElementById('alertSearch')?.value || ''; renderEvents(); }
 function clearAlertSearch() { const el=document.getElementById('alertSearch'); if(el) el.value=''; state.alertSearch=''; renderEvents(); }
@@ -1378,21 +1405,62 @@ function selectEvent(i) {
   const content = document.getElementById('detailContent'); content.classList.add('visible');
   const kvHTML = ev.enrichment.map(k => `<div class="detail-kv"><div class="detail-kv-key">${escapeHtml(k.label)}</div><div class="detail-kv-val ${escapeHtml(k.cls)}">${escapeHtml(k.val)}</div></div>`).join('');
   const tagsHTML = ev.tags.map(t => `<span class="enrich-tag ${escapeHtml(t.cls)}">${escapeHtml(t.label)}</span>`).join('');
-  content.innerHTML = `<div class="detail-header"><div class="detail-title-block"><div class="detail-eyebrow">${escapeHtml(ev.id)} · ${escapeHtml(ev.agent)} · ${escapeHtml(ev.time)}</div><div class="detail-title">${escapeHtml(ev.title)}</div></div><div class="detail-actions"><button class="btn btn-expand" onclick="toggleLog()" id="logBtn">Show Log</button><button class="btn btn-dismiss" onclick="dismissEvent(${i})">Dismiss</button><button class="btn btn-escalate" onclick="escalateEvent(${i})">Escalate →</button></div></div><div class="detail-section"><div class="detail-section-label">Agent Explanation</div><div class="detail-text">${escapeHtml(ev.explanation)}</div></div><div class="detail-section"><div class="detail-section-label">Key Fields</div><div class="detail-kv-grid">${kvHTML}</div></div><div class="detail-section"><div class="detail-section-label">Enrichment & Context</div><div class="enrichment-tags">${tagsHTML}</div></div><div class="detail-section"><div class="detail-section-label">Recommended Next Question</div><div class="next-question"><div class="next-q-label">⬡ Agent Recommends</div><div class="next-q-text">${escapeHtml(ev.nextQ)}</div></div></div><div class="detail-section"><div class="detail-section-label">Raw Log Sample</div><pre class="log-snippet" id="logSnippet">${escapeHtml(ev.log)}</pre></div>`;
+  const addToExisting = CASES.length ? `<select id="casePick" class="alert-search">${CASES.map(c=>`<option value="${escapeHtml(c.id)}">${escapeHtml(c.id)} // ${escapeHtml(c.name)}</option>`).join('')}</select><button class="btn btn-expand" onclick="addAlertToPickedCase(${i})">Add To Case</button>` : '';
+  content.innerHTML = `<div class="detail-header"><div class="detail-title-block"><div class="detail-eyebrow">${escapeHtml(ev.id)} · ${escapeHtml(ev.agent)} · ${escapeHtml(ev.time)}</div><div class="detail-title">${escapeHtml(ev.title)}</div></div><div class="detail-actions"><button class="btn btn-expand" onclick="toggleLog()" id="logBtn">Show Log</button><button class="btn btn-dismiss" onclick="dismissEvent(${i})">Dismiss</button><button class="btn btn-escalate" onclick="escalateEvent(${i})">Escalate →</button></div></div><div style="margin-bottom:14px;display:flex;gap:8px;align-items:center">${addToExisting}</div><div class="detail-section"><div class="detail-section-label">Agent Explanation</div><div class="detail-text">${escapeHtml(ev.explanation)}</div></div><div class="detail-section"><div class="detail-section-label">Key Fields</div><div class="detail-kv-grid">${kvHTML}</div></div><div class="detail-section"><div class="detail-section-label">Enrichment & Context</div><div class="enrichment-tags">${tagsHTML}</div></div><div class="detail-section"><div class="detail-section-label">Recommended Next Question</div><div class="next-question"><div class="next-q-label">⬡ Agent Recommends</div><div class="next-q-text">${escapeHtml(ev.nextQ)}</div></div></div><div class="detail-section"><div class="detail-section-label">Raw Log Sample</div><pre class="log-snippet" id="logSnippet">${escapeHtml(ev.log)}</pre></div>`;
 }
 function toggleLog() { const s=document.getElementById('logSnippet'), b=document.getElementById('logBtn'); if(!s||!b)return; const v = s.classList.toggle('visible'); b.textContent = v ? 'Hide Log' : 'Show Log'; }
-async function dismissEvent(i) { const ev=EVENTS[i]; if(!ev)return; await fetch('/api/events/'+encodeURIComponent(ev.id)+'/dismiss',{method:'PATCH'}); ev.status='dismissed'; const row=document.getElementById(`evrow-${i}`); if(row){row.style.opacity='0.35';row.style.pointerEvents='none';} document.getElementById('detailEmpty').style.display='flex'; document.getElementById('detailContent').classList.remove('visible'); }
-async function escalateEvent(i) { const ev=EVENTS[i]; if(!ev)return; await fetch('/api/events/'+encodeURIComponent(ev.id)+'/escalate',{method:'PATCH'}); await refreshData(); renderDrawer(); renderCommander(); const row=document.getElementById(`evrow-${i}`); if(row) row.style.borderLeft='3px solid var(--blue)'; const btn=document.querySelector('.btn-escalate'); if(btn){btn.textContent='✓ Escalated'; btn.style.background='var(--green)';} }
+async function dismissEvent(i) { const ev=EVENTS[i]; if(!ev)return; await fetch('/api/events/'+encodeURIComponent(ev.id)+'/dismiss',{method:'PATCH'}); await refreshData(); renderEvents(); renderStats(); document.getElementById('detailEmpty').style.display='flex'; document.getElementById('detailContent').classList.remove('visible'); }
+async function escalateEvent(i) { const ev=EVENTS[i]; if(!ev)return; const res=await api('/api/events/'+encodeURIComponent(ev.id)+'/escalate',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({actor_id:ACCOUNTS[0]?.id})}); await refreshData(); renderEvents(); renderDrawer(); renderCommander(); await openCaseLab(res.case_id); }
+async function addAlertToPickedCase(i) { const ev=EVENTS[i], cid=document.getElementById('casePick')?.value; if(!ev||!cid)return; await api(`/api/cases/${encodeURIComponent(cid)}/events/${encodeURIComponent(ev.id)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({actor_id:ACCOUNTS[0]?.id,note:'Accepted newer alert into existing case'})}); await refreshData(); renderEvents(); renderDrawer(); await openCaseLab(cid); }
 function setFilter(el, f='all') { document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active')); el.classList.add('active'); state.activeSeverityFilter = f; renderEvents(); }
 function renderDrawer() {
   const body = document.getElementById('drawerBody');
-  body.innerHTML = CASES.length ? CASES.map(c => `<div class="case-row"><div class="case-id">${escapeHtml(c.id)}</div><div class="case-name">${escapeHtml(c.name)}</div><span class="case-status ${escapeHtml(c.status)}">${escapeHtml(c.status)}</span></div>`).join('') : '<div style="color:var(--text-muted);padding:20px">No escalated cases yet.</div>';
+  body.innerHTML = CASES.length ? CASES.map(c => `<div class="case-row" onclick="openCaseLab('${escapeHtml(c.id)}')"><div class="case-id">${escapeHtml(c.id)}</div><div style="flex:1"><div class="case-name">${escapeHtml(c.name)}</div><div style="font-family:var(--mono);font-size:10px;color:var(--text-muted)">${c.events} alerts · ${c.members} analysts · ${escapeHtml(c.owner)}</div></div><span class="case-status ${escapeHtml(c.status)}">${escapeHtml(c.status)}</span></div>`).join('') : '<div style="color:var(--text-muted);padding:20px">No escalated cases yet.</div>';
+  renderStats();
 }
 let drawerOpen = false;
-function toggleDrawer() { drawerOpen = !drawerOpen; document.getElementById('casesDrawer').classList.toggle('open', drawerOpen); }
+function toggleDrawer() { drawerOpen = !drawerOpen; renderDrawer(); document.getElementById('casesDrawer').classList.toggle('open', drawerOpen); }
+function indicatorPill(i) { return `<span class="indicator-pill" onmouseenter="showIndicatorRelations(event,'${encodeURIComponent(i.value)}')" onmouseleave="hideIndicatorRelations()" onclick="showIndicatorRelations(event,'${encodeURIComponent(i.value)}')">${escapeHtml(i.indicator_type||i.type)}:${escapeHtml(i.value)}</span>`; }
+async function openCaseLab(caseId=null) {
+  document.getElementById('caseLab').classList.add('open'); renderCaseList(caseId);
+  if(caseId) await loadCaseDetail(caseId); else if(CASES[0]) await loadCaseDetail(CASES[0].id);
+}
+function closeCaseLab(){ document.getElementById('caseLab').classList.remove('open'); }
+function renderCaseList(active) { document.getElementById('caseListPane').innerHTML = CASES.map(c=>`<div class="case-mini ${c.id===active?'active':''}" onclick="loadCaseDetail('${escapeHtml(c.id)}')"><div class="case-mini-id">${escapeHtml(c.id)} · ${escapeHtml(c.status)}</div><div class="case-mini-name">${escapeHtml(c.name)}</div><div class="tl-time">${c.events} alerts · ${c.members} analysts</div></div>`).join('') || '<div class="case-mini"><div class="case-mini-name">No cases</div></div>'; }
+async function loadCaseDetail(caseId) {
+  const c = await api('/api/cases/'+encodeURIComponent(caseId)); SELECTED_CASE=c; renderCaseList(c.id);
+  const main=document.getElementById('caseMain'), side=document.getElementById('caseSide');
+  const five=c.five_ws||{};
+  main.innerHTML = `<div class="case-section"><h3>${escapeHtml(c.id)} // ${escapeHtml(c.name)}</h3><div class="case-section-body"><div class="bluf">${escapeHtml(c.bluf || 'BLUF pending generation.')}</div></div></div>
+  <div class="case-section"><h3>5 Ws</h3><div class="case-section-body case-grid2">${['who','what','when','where','why'].map(k=>`<div class="detail-kv"><div class="detail-kv-key">${k}</div><div class="detail-kv-val">${escapeHtml(five[k]||'pending')}</div></div>`).join('')}</div></div>
+  <div class="case-section"><h3>Technical Summary</h3><div class="case-section-body detail-text">${escapeHtml(c.technical_summary||c.summary||'Pending analyst validation.')}</div></div>
+  <div class="case-section"><h3>Way Ahead</h3><div class="case-section-body detail-text">${escapeHtml(c.way_ahead||'Pending.')}</div></div>
+  <div class="case-section"><h3>Timeline</h3><div class="case-section-body"><div class="timeline">${(c.timeline||[]).map(t=>`<div class="tl-item"><div class="tl-time">${escapeHtml(compactTime(t.event_time||t.created_at))} · ${escapeHtml(t.entry_type)} · ${escapeHtml(t.actor_name||'system')}</div><div class="tl-title">${escapeHtml(t.title)}</div><div class="tl-body">${escapeHtml(t.body||'')}</div></div>`).join('')||'<div class="tl-body">No timeline entries.</div>'}</div></div></div>
+  <div class="case-section"><h3>Final Output</h3><div class="case-section-body"><pre class="log-snippet visible">${escapeHtml(c.final_output||'Not generated.')}</pre><button class="btn btn-escalate" onclick="finalizeCase()">Regenerate Final Output</button></div></div>`;
+  side.innerHTML = `<div class="case-lab-head"><div class="case-lab-title">Case Workbench</div></div>
+    <div class="case-section"><h3>Dogpile Analysts</h3><div class="case-section-body">${(c.members||[]).map(m=>`<div class="profile-card"><b>${escapeHtml(m.rank||'')} ${escapeHtml(m.display_name)}</b><br><span class="tl-time">${escapeHtml(m.work_role)} · ${escapeHtml(m.skill_level)} · ${escapeHtml(m.team||'no team')}</span></div>`).join('') || '<div class="tl-body">No analysts assigned.</div>'}<div class="case-form"><select id="memberPick">${ACCOUNTS.map(a=>`<option value="${a.id}">${escapeHtml(a.rank||'')} ${escapeHtml(a.display_name)} // ${escapeHtml(a.work_role||'')}</option>`).join('')}</select><button class="btn btn-expand" onclick="addMemberToCase()">Add Analyst</button></div></div></div>
+    <div class="case-section"><h3>Indicators</h3><div class="case-section-body">${(c.indicators||[]).map(indicatorPill).join('') || '<div class="tl-body">No indicators yet.</div>'}<div class="case-form"><select id="indType"><option>ip</option><option>domain</option><option>host</option><option>hash</option><option>process</option><option>user</option><option>observable</option></select><input id="indValue" placeholder="indicator value"><textarea id="indDesc" placeholder="description/source"></textarea><button class="btn btn-expand" onclick="addIndicatorToCase()">Add Indicator</button></div></div></div>
+    <div class="case-section"><h3>Custom Addition / Admin Request</h3><div class="case-section-body case-form"><select id="tlType"><option>note</option><option>admin_request</option><option>finding</option><option>enrichment</option><option>containment</option></select><input id="tlTitle" placeholder="title"><textarea id="tlBody" placeholder="what did the analyst find or request?"></textarea><button class="btn btn-expand" onclick="addTimelineToCase()">Add Timeline Entry</button></div></div>
+    <div class="case-section"><h3>Linked Alerts</h3><div class="case-section-body">${(c.events||[]).map(e=>`<div class="profile-card"><b>${escapeHtml(e.id)}</b><br>${escapeHtml(e.title)}<br><span class="tl-time">${escapeHtml(e.severity)} · ${escapeHtml(e.status)}</span></div>`).join('')}</div></div>`;
+}
+async function addMemberToCase(){ if(!SELECTED_CASE)return; await api(`/api/cases/${SELECTED_CASE.id}/members`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account_id:document.getElementById('memberPick').value})}); await refreshData(); await loadCaseDetail(SELECTED_CASE.id); renderDrawer(); }
+async function addIndicatorToCase(){ if(!SELECTED_CASE)return; await api(`/api/cases/${SELECTED_CASE.id}/indicators`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({indicator_type:document.getElementById('indType').value,value:document.getElementById('indValue').value,description:document.getElementById('indDesc').value,created_by:ACCOUNTS[0]?.id})}); await loadCaseDetail(SELECTED_CASE.id); }
+async function addTimelineToCase(){ if(!SELECTED_CASE)return; await api(`/api/cases/${SELECTED_CASE.id}/timeline`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({entry_type:document.getElementById('tlType').value,title:document.getElementById('tlTitle').value,body:document.getElementById('tlBody').value,actor_id:ACCOUNTS[0]?.id})}); await loadCaseDetail(SELECTED_CASE.id); }
+async function finalizeCase(){ if(!SELECTED_CASE)return; await api(`/api/cases/${SELECTED_CASE.id}/finalize`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); await loadCaseDetail(SELECTED_CASE.id); }
+async function showIndicatorRelations(ev, enc) { const val=decodeURIComponent(enc); const d=await api('/api/indicators/'+encodeURIComponent(val)+'/related').catch(()=>({cases:[],events:[]})); const pop=document.getElementById('relationPop'); pop.style.left=(ev.clientX+12)+'px'; pop.style.top=(ev.clientY+12)+'px'; pop.style.display='block'; pop.innerHTML=`<b>${escapeHtml(val)}</b><br><br>Cases:<br>${(d.cases||[]).map(c=>`${escapeHtml(c.case_id)} // ${escapeHtml(c.name)}`).join('<br>')||'none'}<br><br>Events:<br>${(d.events||[]).map(e=>`${escapeHtml(e.event_id)} // ${escapeHtml(e.title)}`).join('<br>')||'none'}`; }
+function hideIndicatorRelations(){ document.getElementById('relationPop').style.display='none'; }
+async function openAccounts(){ document.getElementById('accountPanel').classList.add('open'); await renderAccounts(); }
+function closeAccounts(){ document.getElementById('accountPanel').classList.remove('open'); }
+function opts(arr, selected=''){ return (arr||[]).map(x=>`<option ${x===selected?'selected':''}>${escapeHtml(x)}</option>`).join(''); }
+async function renderAccounts(){ ACCOUNTS=await api('/api/accounts').catch(()=>[]); ACCOUNT_OPTIONS=await api('/api/accounts/options').catch(()=>({})); const branches=Object.keys(ACCOUNT_OPTIONS.ranks||{}); document.getElementById('accountForm').innerHTML=`<input id="acctName" placeholder="Display name"><input id="acctUser" placeholder="username"><select id="acctPriv">${opts(ACCOUNT_OPTIONS.privilege_levels||['analyst','admin'])}</select><select id="acctBranch" onchange="updateRankOptions()">${opts(branches)}</select><select id="acctRank"></select><select id="acctRole">${opts(ACCOUNT_OPTIONS.work_roles||[])}</select><select id="acctSkill">${opts(ACCOUNT_OPTIONS.skill_levels||[])}</select><input id="acctTeam" placeholder="Cyber Protection Team e.g. 101 Cyber Protection Team"><input id="acctYears" type="number" placeholder="Years experience"><input id="acctCerts" placeholder="Certs"><input id="acctDegrees" placeholder="Degrees"><input id="acctContact" placeholder="Contact"><textarea id="acctBio" placeholder="Bio / background / specialties"></textarea><button class="btn btn-escalate" onclick="saveAccount()">Save Account</button>`; updateRankOptions(); document.getElementById('accountList').innerHTML=ACCOUNTS.map(a=>`<div class="profile-card"><b>${escapeHtml(a.rank||'')} ${escapeHtml(a.display_name)}</b><br><span class="tl-time">${escapeHtml(a.privilege_level)} · ${escapeHtml(a.work_role)} · ${escapeHtml(a.skill_level)} · ${escapeHtml(a.team||'no team')}</span><br>${escapeHtml(a.bio||'')}</div>`).join('') || '<div class="tl-body">No accounts yet.</div>'; }
+function updateRankOptions(){ const b=document.getElementById('acctBranch')?.value; const ranks=(ACCOUNT_OPTIONS.ranks||{})[b]||[]; const el=document.getElementById('acctRank'); if(el) el.innerHTML=opts(ranks); }
+async function saveAccount(){ const payload={display_name:acctName.value, username:acctUser.value, privilege_level:acctPriv.value, service_branch:acctBranch.value, rank:acctRank.value, work_role:acctRole.value, skill_level:acctSkill.value, team:acctTeam.value, years_experience:acctYears.value, certs:acctCerts.value, degrees:acctDegrees.value, contact:acctContact.value, bio:acctBio.value}; await api('/api/accounts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); await renderAccounts(); await refreshData(); renderCommander(); }
 function renderCommander() {
-  document.getElementById('asomList').innerHTML = ASOM_LINES.map(a => `<div class="asom-line-row"><div class="asom-num">${a.n}</div><div class="asom-text">${escapeHtml(a.text)}</div><span class="asom-status ${escapeHtml(a.status)}">${escapeHtml(a.status)}</span></div>`).join('');
-  document.getElementById('actorList').innerHTML = ACTORS.map(a => `<div class="actor-row"><div class="actor-icon">⚠</div><div><div class="actor-name">${escapeHtml(a.name)}</div><div class="actor-detail">${escapeHtml(a.detail)}</div></div><div class="actor-conf">${escapeHtml(a.conf)}</div></div>`).join('');
+  renderStats();
+  document.getElementById('asomList').innerHTML = CASES.map(c => `<div class="asom-line-row" onclick="openCaseLab('${escapeHtml(c.id)}')"><div class="asom-num">${escapeHtml(c.id)}</div><div class="asom-text">${escapeHtml(c.name)}</div><span class="asom-status ${c.status==='open'?'active':c.status==='closed'?'done':'pending'}">${escapeHtml(c.status)}</span></div>`).join('') || '<div class="asom-line-row"><div class="asom-text">No cases yet.</div></div>';
+  document.getElementById('asomCountLabel').textContent = `${CASES.filter(c=>c.status==='closed').length} / ${CASES.length} closed`;
+  document.getElementById('actorList').innerHTML = '<div class="actor-row"><div><div class="actor-name">No attribution asserted</div><div class="actor-detail">Threat actor labels appear only after analyst validation.</div></div></div>';
+  document.getElementById('analystStatusRow').innerHTML = ACCOUNTS.length ? ACCOUNTS.map(a=>`<div class="analyst-card"><div class="analyst-avatar">${escapeHtml((a.display_name||'?').split(/\s+/).map(x=>x[0]).join('').slice(0,2).toUpperCase())}</div><div><div class="analyst-name">${escapeHtml(a.rank||'')} ${escapeHtml(a.display_name)}</div><div class="analyst-load">${escapeHtml(a.work_role||'')} · ${escapeHtml(a.skill_level||'')} · ${escapeHtml(a.team||'')}</div></div><div class="analyst-status-dot" style="background:var(--green);box-shadow:0 0 5px var(--green)"></div></div>`).join('') : '<div class="analyst-card"><div><div class="analyst-name">No accounts configured</div><div class="analyst-load">Create accounts from the Accounts tab.</div></div></div>';
   document.getElementById('agentFeed').innerHTML = FEED.map((f, i) => `<div class="feed-row"><div class="feed-time">${escapeHtml(f.time)}</div><div class="feed-dot-col"><div class="feed-dot ${escapeHtml(f.color)}"></div>${i < FEED.length - 1 ? '<div class="feed-line"></div>' : ''}</div><div class="feed-body"><div class="feed-agent">${escapeHtml(f.agent)}</div><div class="feed-text">${escapeHtml(f.text)} <span class="feed-tag">${escapeHtml(f.tag)}</span></div></div></div>`).join('');
   document.getElementById('eventsTableBody').innerHTML = AGENT_TABLE.map(a => `<tr><td>${escapeHtml(a.agent)}</td><td>${a.count}</td><td><span class="asom-status ${a.status === 'active' ? 'active' : 'pending'}">${escapeHtml(a.status)}</span></td></tr>`).join('');
   document.getElementById('cmdTimestamp').textContent = new Date().toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second:'2-digit' }) + ' UTC';
