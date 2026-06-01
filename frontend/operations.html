@@ -1096,7 +1096,7 @@ body::before {
 .case-section-body { padding:12px; }
 .bluf { border-left:3px solid var(--amber); padding:12px; background:var(--amber-glow); color:var(--text); line-height:1.5; }
 .timeline { position:relative; padding:8px 0 8px 18px; }
-.timeline:before { content:''; position:absolute; left:7px; top:0; bottom:0; width:1px; background:var(--border-active); }
+.timeline:before { content:''; position:absolute; left:7px; top:0; bottom:0; width:1px; background:var(--border-active); } .btn-tl-edit:hover{background:var(--surface2)}.btn-tl-delete:hover{background:var(--red);color:#fff}
 .tl-item { position:relative; padding:0 0 14px 16px; }
 .tl-item:before { content:''; position:absolute; left:-15px; top:4px; width:9px; height:9px; border-radius:50%; background:var(--blue); box-shadow:0 0 6px var(--blue); }
 .tl-time { font-family:var(--mono); font-size:10px; color:var(--text-muted); }
@@ -1551,17 +1551,62 @@ async function loadCaseDetail(caseId) {
 </div></div>
   <div class="case-section"><h3>Technical Summary</h3><div class="case-section-body detail-text">${escapeHtml(c.technical_summary||c.summary||'Pending analyst validation.')}</div></div>
   <div class="case-section"><h3>Way Ahead</h3><div class="case-section-body detail-text">${escapeHtml(c.way_ahead||'Pending.')}</div></div>
-  <div class="case-section"><h3>Timeline</h3><div class="case-section-body"><div class="timeline">${(c.timeline||[]).map(t=>`<div class="tl-item"><div class="tl-time">${escapeHtml(compactTime(t.event_time||t.created_at))} · ${escapeHtml(t.entry_type)} · ${escapeHtml(t.actor_name||'system')}</div><div class="tl-title">${escapeHtml(t.title)}</div><div class="tl-body">${escapeHtml(t.body||'')}</div></div>`).join('')||'<div class="tl-body">No timeline entries.</div>'}</div></div></div>
+  <div class="case-section"><h3>Timeline</h3><div class="case-section-body"><div class="timeline">${(c.timeline||[]).map(t=>{
+    const isEditable = t.id ? true : false;
+    const timeStr = t.event_time || t.created_at || '';
+    return '<div class="tl-item" style="cursor:default">'+
+      (isEditable?('<button class="btn-tl-edit" style="float:right;background:none;border:1px solid var(--border);color:var(--text-dim);padding:1px 5px;font-size:9px;font-family:var(--mono);cursor:pointer;border-radius:2px" title="Edit timeline entry" onclick="editTimelineEntry(\''+t.id+'\')">edit</button>'+
+      '<button class="btn-tl-delete" style="float:right;background:none;border:1px solid var(--red);color:var(--red);padding:1px 5px;font-size:9px;font-family:var(--mono);cursor:pointer;border-radius:2px;margin-right:4px" title="Delete this entry" onclick="deleteTimelineEntry(\''+t.id+'\')">del</button>'):'')+
+      '<div class="tl-time">'+escapeHtml(compactTime(timeStr))+' · '+escapeHtml(t.entry_type)+' · '+escapeHtml(t.actor_name||'system')+'</div>'+
+      '<div class="tl-title">'+escapeHtml(t.title)+'</div>'+
+      '<div class="tl-body">'+escapeHtml(t.body||'')+'</div></div>';
+  }).join('')||'<div class="tl-body">No timeline entries. Add one below or escalate alerts to populate timeline.</div>'}</div></div></div>
   <div class="case-section"><h3>Final Output</h3><div class="case-section-body"><pre class="log-snippet visible">${escapeHtml(c.final_output||'Not generated.')}</pre><button class="btn btn-escalate" onclick="finalizeCase()">Regenerate Final Output</button></div></div>`;
   side.innerHTML = `<div class="case-lab-head"><div class="case-lab-title">Case Workbench</div></div>
     <div class="case-section"><h3>Dogpile Analysts</h3><div class="case-section-body">${(c.members||[]).map(m=>`<div class="profile-card"><b onclick="openProfile('${m.id||m.account_id||''}')" style="cursor:pointer">${personName(m)}</b><br><span class="tl-time">${escapeHtml(m.work_role)} · ${escapeHtml(m.skill_level)} · ${teamLinkFromAccount(m)}</span></div>`).join('') || '<div class="tl-body">No analysts assigned.</div>'}<div class="case-form"><select id="memberPick">${ACCOUNTS.map(a=>`<option value="${a.id}">${personName(a)} // ${escapeHtml(a.work_role||'')}</option>`).join('')}</select><button class="btn btn-expand" onclick="addMemberToCase()">Add Analyst</button></div></div></div>
     <div class="case-section"><h3>Indicators</h3><div class="case-section-body">${(c.indicators||[]).map(indicatorPill).join('') || '<div class="tl-body">No indicators yet.</div>'}<div class="case-form"><select id="indType"><option>ip</option><option>domain</option><option>host</option><option>hash</option><option>process</option><option>user</option><option>observable</option></select><input id="indValue" placeholder="indicator value"><textarea id="indDesc" placeholder="description/source"></textarea><button class="btn btn-expand" onclick="addIndicatorToCase()">Add Indicator</button></div></div></div>
-    <div class="case-section"><h3>Custom Addition / Admin Request</h3><div class="case-section-body case-form"><select id="tlType"><option>note</option><option>admin_request</option><option>finding</option><option>enrichment</option><option>containment</option></select><input id="tlTitle" placeholder="title"><textarea id="tlBody" placeholder="what did the analyst find or request?"></textarea><button class="btn btn-expand" onclick="addTimelineToCase()">Add Timeline Entry</button></div></div>
+    <div class="case-section"><h3>Custom Addition / Admin Request</h3><div class="case-section-body case-form"><select id="tlType"><option>note</option><option>admin_request</option><option>finding</option><option>enrichment</option><option>containment</option></select><input id="tlTitle" placeholder="title"><textarea id="tlBody" placeholder="what did the analyst find or request?"></textarea><input id="tlTime" type="datetime-local" placeholder="Event time (optional, for root cause analysis)"><button class="btn btn-expand" onclick="addTimelineToCase()">Add Timeline Entry</button><div style="font-size:9px;color:var(--text-muted);margin-top:4px">Leave time blank for current time. Set specific time for root cause analysis.</div></div></div>
     <div class="case-section"><h3>Linked Alerts</h3><div class="case-section-body">${(c.events||[]).map(e=>`<div class="profile-card"><b>${escapeHtml(e.id)}</b><br>${escapeHtml(e.title)}<br><span class="tl-time">${escapeHtml(e.severity)} · ${escapeHtml(e.status)}</span></div>`).join('')}</div></div>`;
 }
 async function addMemberToCase(){ if(!SELECTED_CASE)return; await api(`/api/cases/${SELECTED_CASE.id}/members`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account_id:document.getElementById('memberPick').value})}); await refreshData(); await loadCaseDetail(SELECTED_CASE.id); renderDrawer(); }
 async function addIndicatorToCase(){ if(!SELECTED_CASE)return; await api(`/api/cases/${SELECTED_CASE.id}/indicators`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({indicator_type:document.getElementById('indType').value,value:document.getElementById('indValue').value,description:document.getElementById('indDesc').value,created_by:ACCOUNTS[0]?.id})}); await loadCaseDetail(SELECTED_CASE.id); }
-async function addTimelineToCase(){ if(!SELECTED_CASE)return; await api(`/api/cases/${SELECTED_CASE.id}/timeline`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({entry_type:document.getElementById('tlType').value,title:document.getElementById('tlTitle').value,body:document.getElementById('tlBody').value,actor_id:ACCOUNTS[0]?.id})}); await loadCaseDetail(SELECTED_CASE.id); }
+async function addTimelineToCase(){
+  if(!SELECTED_CASE)return;
+  const timeInput = document.getElementById('tlTime');
+  const payload = {
+    entry_type:document.getElementById('tlType').value,
+    title:document.getElementById('tlTitle').value,
+    body:document.getElementById('tlBody').value,
+    actor_id:ACCOUNTS[0]?.id
+  };
+  if(timeInput && timeInput.value) payload.event_time = timeInput.value;
+  await api(`/api/cases/${SELECTED_CASE.id}/timeline`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  await loadCaseDetail(SELECTED_CASE.id);
+}
+async function editTimelineEntry(tlId){
+  if(!tlId)return;
+  const entry = (SELECTED_CASE?.timeline||[]).find(t=>t.id===tlId);
+  if(!entry){alert('Entry not found');return;}
+  const newTime=prompt('Edit time (ISO format or leave blank for now):', entry.event_time||entry.created_at||'');
+  if(newTime===null)return;
+  const newTitle=prompt('Title:', entry.title);
+  if(newTitle===null)return;
+  const newBody=prompt('Body:', entry.body);
+  if(newBody===null)return;
+  const newType=prompt('Type (note/findings/enrichment/containment/admin_request):', entry.entry_type);
+  if(newType===null)return;
+  const up={};
+  if(newTime)up.event_time=newTime;
+  up.title=newTitle;up.body=newBody;up.entry_type=newType;
+  up.token=state.token;
+  try{await api(`/api/case-timeline/${tlId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(up)});await loadCaseDetail(SELECTED_CASE.id);}
+  catch(e){alert('Failed: '+e.message)}
+}
+async function deleteTimelineEntry(tlId){
+  if(!tlId||!confirm('Delete this timeline entry?'))return;
+  try{await api(`/api/case-timeline/${tlId}`,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:state.token})});await loadCaseDetail(SELECTED_CASE.id);}
+  catch(e){alert('Failed: '+e.message)}
+}
 async function finalizeCase(){ if(!SELECTED_CASE)return; await api(`/api/cases/${SELECTED_CASE.id}/finalize`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); await loadCaseDetail(SELECTED_CASE.id); }
 async function showIndicatorRelations(ev, enc) { const val=decodeURIComponent(enc); const d=await api('/api/indicators/'+encodeURIComponent(val)+'/related').catch(()=>({cases:[],events:[]})); const pop=document.getElementById('relationPop'); pop.style.left=(ev.clientX+12)+'px'; pop.style.top=(ev.clientY+12)+'px'; pop.style.display='block'; pop.innerHTML=`<b>${escapeHtml(val)}</b><br><br>Cases:<br>${(d.cases||[]).map(c=>`${escapeHtml(c.case_id)} // ${escapeHtml(c.name)}`).join('<br>')||'none'}<br><br>Events:<br>${(d.events||[]).map(e=>`${escapeHtml(e.event_id)} // ${escapeHtml(e.title)}`).join('<br>')||'none'}`; }
 function hideIndicatorRelations(){ document.getElementById('relationPop').style.display='none'; }

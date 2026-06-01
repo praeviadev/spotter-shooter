@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spotter-Shooter // Admin Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;600;700;800&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0d0f12;--surface:#15191c;--surface2:#1c2024;--border:#2a3036;--text:#d4dde4;--text-dim:#52606a;--text-muted:#3a4e58;--amber:#e8a427;--amber-dim:rgba(232,164,39,.15);--amber-glow:rgba(232,164,39,.08);--red:#e85238;--green:#4caf6f;--blue:#4a9eca;--purple:#9c72e6;--mono:'Share Tech Mono',monospace;--body:'Barlow',sans-serif;--display:'Barlow Condensed',sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:100vh}
+/* Header */
+.header{display:flex;align-items:center;justify-content:space-between;padding:0 28px;height:52px;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;top:0;z-index:200}
+.logo{display:flex;align-items:baseline;gap:10px}
+.logo-mark{font-family:var(--display);font-weight:700;font-size:18px;letter-spacing:.08em;color:var(--amber);text-transform:uppercase}
+.logo-sep{color:var(--text-dim)}
+.logo-sub{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.12em;text-transform:uppercase}
+.header-center{display:flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:2px;padding:4px}
+.role-btn{font-family:var(--display);font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:6px 22px;border:none;background:transparent;color:var(--text-dim);cursor:pointer;border-radius:1px;transition:all .2s}
+.role-btn:hover{color:var(--text)}.role-btn.active{background:var(--amber);color:#0a0c0e}
+.header-right{display:flex;align-items:center;gap:18px}
+.live-badge{font-family:var(--mono);font-size:10px;color:var(--text-dim);display:flex;align-items:center;gap:6px}
+.dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+.dot.green{background:var(--green);box-shadow:0 0 6px rgba(76,175,111,.4)}
+.hunt-name{font-family:var(--display);font-size:13px;font-weight:600;letter-spacing:.08em;color:var(--text);cursor:pointer}
+/* Banner */
+.readonly-banner{padding:10px 18px;background:var(--amber-glow);border-bottom:1px solid var(--amber-dim);color:var(--amber);font-family:var(--mono);font-size:11px;text-transform:uppercase;display:flex;gap:10px;align-items:center;justify-content:center}
+.readonly-banner a{color:var(--blue);cursor:pointer;text-decoration:underline}
+/* Main layout */
+.admin-container{max-width:1400px;margin:0 auto;padding:24px 28px}
+.admin-section{margin-bottom:40px}
+.admin-section h2{font-family:var(--display);font-size:20px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.admin-grid{display:grid;grid-template-columns:1fr 450px;gap:20px}
+.admin-card{background:var(--surface);border:1px solid var(--border);border-radius:3px;overflow:hidden;margin-bottom:16px}
+.admin-card h3{font-family:var(--display);font-size:14px;color:var(--amber);padding:12px 14px;border-bottom:1px solid var(--border);letter-spacing:.08em;text-transform:uppercase}
+.admin-card-body{padding:14px}
+.form-group{margin-bottom:10px}
+.form-group label{display:block;font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-bottom:3px;letter-spacing:.08em;text-transform:uppercase}
+.form-group input,.form-group select,.form-group textarea{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:7px 10px;font-family:var(--mono);font-size:11px;border-radius:2px}
+.form-group textarea{min-height:60px;resize:vertical}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn{font-family:var(--display);font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;padding:8px 20px;border:1px solid var(--amber);background:transparent;color:var(--amber);cursor:pointer;border-radius:2px;transition:all .2s}
+.btn:hover{background:var(--amber);color:#0a0c0e}
+.btn-sm{padding:5px 12px;font-size:10px}
+.btn-danger{border-color:var(--red);color:var(--red)}.btn-danger:hover{background:var(--red);color:#fff}
+.btn-success{border-color:var(--green);color:var(--green)}.btn-success:hover{background:var(--green);color:#0a0c0e}
+.item-list{max-height:400px;overflow-auto}
+.item-row{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;font-size:12px;font-family:var(--mono)}
+.item-row:hover{background:var(--surface2)}
+.item-info{flex:1}
+.item-actions{display:flex;gap:6px}
+.empty-msg{padding:30px;text-align:center;color:var(--text-muted);font-family:var(--mono);font-size:11px}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:3px;padding:12px;text-align:center}
+.stat-val{font-family:var(--display);font-size:28px;font-weight:700;color:var(--amber)}
+.stat-lbl{font-family:var(--mono);font-size:9px;color:var(--text-dim);letter-spacing:.1em;text-transform:uppercase;margin-top:3px}
+/* Password reset */
+.pwreset-box{background:var(--surface);border:1px solid var(--amber-dim);border-radius:3px;padding:20px;max-width:500px}
+.pwreset-box h3{color:var(--amber);margin-bottom:12px;font-family:var(--display);letter-spacing:.08em}
+/* Notification banner */
+.notif-banner{background:var(--amber-glow);border-bottom:1px solid var(--amber-dim);padding:8px 18px;cursor:pointer;font-family:var(--mono);font-size:11px;color:var(--amber);display:none}
+.notif-banner.visible{display:block}
+/* Tab navigation */
+.admin-tabs{display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:0}
+.tab-btn{font-family:var(--display);font-size:14px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;padding:8px 18px;border:none;background:transparent;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s}
+.tab-btn:hover{color:var(--text)}.tab-btn.active{color:var(--amber);border-bottom-color:var(--amber)}
+.tab-content{display:none}.tab-content.active{display:block}
+/* Scrollbar */
+::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+</style></head>
+<body>
+<header class="header">
+  <div class="logo">
+    <span class="logo-mark">Spotter-Shooter</span>
+    <span class="logo-sep"> // </span>
+    <span class="logo-sub">Admin Console</span>
+  </div>
+  <div class="header-center">
+    <button class="role-btn active" onclick="location.href='/operations.html'">Ops Console</button>
+    <button class="role-btn commander-nav" onclick="location.href='/operations.html?view=commander'">Commander View</button>
+    <button class="role-btn" onclick="openChatFromAdmin()">Chat</button>
+  </div>
+  <div class="header-right">
+    <div class="live-badge"><span class="dot green"></span> Stack Nominal</div>
+    <div class="hunt-name" id="currentUserBadge" onclick="openLoginFromAdmin()" style="cursor:pointer">Login</div>
+  </div>
+</header>
+<div class="readonly-banner" id="readOnlyBanner" style="display:none">Admin access required. <a onclick="openLoginFromAdmin()">Login</a> or <a onclick="openCreateAccount()">Create an Account</a>.</div>
+
+<div class="admin-container" id="adminContent" style="display:none">
+  <div class="stats-grid" id="statsGrid"></div>
+  
+  <div class="admin-tabs" id="adminTabs">
+    <button class="tab-btn active" onclick="switchTab('accounts')">Accounts</button>
+    <button class="tab-btn" onclick="switchTab('teams')">Teams</button>
+    <button class="tab-btn" onclick="switchTab('audit')">Audit Trail</button>
+    <button class="tab-btn" onclick="switchTab('pwreset')">Password Reset</button>
+    <button class="tab-btn" onclick="switchTab('agents')">Agent Management</button>
+    <button class="tab-btn" onclick="switchTab('settings')">Settings</button>
+  </div>
+  
+  <!-- Accounts Tab -->
+  <div class="tab-content active" id="tab-accounts">
+    <div class="admin-section">
+      <div class="admin-grid">
+        <div>
+          <div class="admin-card">
+            <h3>Create / Edit Account</h3>
+            <div class="admin-card-body">
+              <div class="form-row">
+                <div class="form-group"><label>First Name</label><input id="acctFirst"></div>
+                <div class="form-group"><label>Last Name</label><input id="acctLast"></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group"><label>Username</label><input id="acctUser"></div>
+                <div class="form-group"><label>Display Name</label><input id="acctName"></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group"><label>Password</label><input id="acctPass" type="password" placeholder="Leave blank to keep"></div>
+                <div class="form-group"><label>Privilege</label><select id="acctPriv"><option value="analyst">Analyst</option><option value="admin">Admin</option></select></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group"><label>Email (2FA)</label><input id="acctEmail" type="email"></div>
+                <div class="form-group"><label>Phone (2FA)</label><input id="acctPhone"></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Service Branch</label>
+                  <select id="acctBranch" onchange="updateRankOptionsFor('acct')">
+                    <option>army</option><option>airforce</option><option>navy</option><option>coastguard</option><option>marines</option>
+                  </select>
+                </div>
+                <div class="form-group"><label>Rank</label><select id="acctRank"></select></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group"><label>Work Role</label><select id="acctRole"></select></div>
+                <div class="form-group"><label>Skill Level</label><select id="acctSkill"><option>Basic</option><option>Senior</option><option>Master</option></select></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group"><label>Team</label><select id="acctTeamId"><option value="">(none)</option></select></div>
+                <div class="form-group"><label>Years Exp</label><input id="acctYears" type="number" value="0"></div>
+              </div>
+              <div class="form-group"><label>Certs</label><input id="acctCerts"></div>
+              <div class="form-group"><label>Degrees</label><input id="acctDegrees"></div>
+              <div class="form-group"><label>Bio</label><textarea id="acctBio" placeholder="Background, specialties..."></textarea></div>
+              <div style="display:flex;gap:8px;margin-top:8px">
+                <button class="btn btn-success" onclick="saveAccount()">Save Account</button>
+                <button class="btn" onclick="clearAccountForm()">New Account</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="admin-card">
+            <h3>Accounts</h3>
+            <div class="admin-card-body item-list" id="accountList"><div class="empty-msg">No accounts loaded</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Teams Tab -->
+  <div class="tab-content" id="tab-teams">
+    <div class="admin-section">
+      <div class="admin-grid">
+        <div>
+          <div class="admin-card">
+            <h3>Team Profile</h3>
+            <div class="admin-card-body">
+              <div class="form-row">
+                <div class="form-group"><label>Team Type</label><select id="teamType"><option value="CPT">CPT</option><option value="NCPT">NCPT</option></select></div>
+                <div class="form-group"><label>Team Number</label><input id="teamNumber"></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group"><label>Team Logo URL</label><input id="teamLogo"></div>
+                <div class="form-group"><label>Location</label><input id="teamLocation"></div>
+              </div>
+              <div class="form-row">
+                <div class="form-group"><label>Phone</label><input id="teamPhone"></div>
+                <div class="form-group"><label>Email</label><input id="teamEmail"></div>
+              </div>
+              <div class="form-group"><label>Description</label><input id="teamDesc"></div>
+              <div class="form-group"><label>Notes</label><textarea id="teamNotes"></textarea></div>
+              <div class="form-group"><label>Team Lead</label><select id="teamLeadId"><option value="">Unassigned</option></select>
+                <input id="teamLeadText" placeholder="Or enter name manually" style="margin-top:4px"></div>
+              <div class="form-group"><label>Deputy TL</label><select id="teamDeputyId"><option value="">Unassigned</option></select>
+                <input id="teamDeputyText" placeholder="Or enter name manually" style="margin-top:4px"></div>
+              <div class="form-group"><label>Planner</label><select id="teamPlannerId"><option value="">Unassigned</option></select>
+                <input id="teamPlannerText" placeholder="Or enter name manually" style="margin-top:4px"></div>
+              <div class="form-group"><label>NCOIC</label><select id="teamNcoicId"><option value="">Unassigned</option></select>
+                <input id="teamNcoicText" placeholder="Or enter name manually" style="margin-top:4px"></div>
+              <div style="display:flex;gap:8px;margin-top:8px">
+                <button class="btn btn-success" onclick="saveTeam()">Save Team</button>
+                <button class="btn" onclick="clearTeamForm()">New Team</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="admin-card">
+            <h3>Teams</h3>
+            <div class="admin-card-body item-list" id="teamList"><div class="empty-msg">No teams</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Audit Tab -->
+  <div class="tab-content" id="tab-audit">
+    <div class="admin-section">
+      <div class="admin-card">
+        <h3>Audit Trail</h3>
+        <div class="admin-card-body item-list" id="auditList"><div class="empty-msg">No audit entries</div></div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Password Reset Tab -->
+  <div class="tab-content" id="tab-pwreset">
+    <div class="admin-section">
+      <div class="pwreset-box">
+        <h3>Password Reset Request</h3>
+        <div class="form-group"><label>Username / Email / Phone</label><input id="pwUser"></div>
+        <div class="form-group"><label>Delivery Method</label><select id="pwMethod"><option value="email">Email</option><option value="sms">SMS</option></select></div>
+        <button class="btn" onclick="requestPwReset()">Send Reset Code</button>
+        <div id="pwResult" style="margin-top:12px"></div>
+      </div>
+      <div class="pwreset-box" style="margin-top:16px">
+        <h3>Complete Password Reset</h3>
+        <div class="form-group"><label>Challenge ID</label><input id="pwChallengeId"></div>
+        <div class="form-group"><label>Reset Code</label><input id="pwCode"></div>
+        <div class="form-group"><label>New Password</label><input id="pwNewPassword" type="password"></div>
+        <button class="btn" onclick="verifyPwReset()">Set New Password</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Agent Management Tab -->
+  <div class="tab-content" id="tab-agents">
+    <div class="admin-section">
+      <div class="admin-card">
+        <h3>Agent Cycle Configuration</h3>
+        <div class="admin-card-body" id="agentCycleConfig"></div>
+      </div>
+      <div class="admin-card">
+        <h3>Custom Agents</h3>
+        <div class="admin-card-body" id="customAgentList"></div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Settings Tab -->
+  <div class="tab-content" id="tab-settings">
+    <div class="admin-section">
+      <div class="admin-grid">
+        <div><div class="admin-card"><h3>Security</h3><div class="admin-card-body"><div class="form-group"><label>Require 2FA</label><select id="setTwofa"><option value="false">Optional</option><option value="true">Required</option></select></div><button class="btn" onclick="saveSecuritySettings()">Save</button></div></div></div>
+        <div><div class="admin-card"><h3>Kibana URL</h3><div class="admin-card-body"><div class="form-group"><label>Kibana URL</label><input id="setKibanaUrl"></div><button class="btn" onclick="saveKibanaSettings()">Save</button></div></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Login panel (from operations) -->
+<div class="login-panel" id="adminLoginPanel" style="position:fixed;right:34px;bottom:84px;z-index:300;background:var(--surface);border:1px solid var(--border);padding:16px;width:320px;display:none"><div style="font-family:var(--display);font-size:13px;color:var(--amber);margin-bottom:10px">Login</div>
+  <div class="form-group"><input id="loginUser" placeholder="Username / Email"></div>
+  <div class="form-group"><input id="loginPass" type="password" placeholder="Password"></div>
+  <button class="btn" onclick="adminLogin()">Login</button>
+  <div id="adminLoginResult" style="margin-top:8px"></div>
+</div>
+
+<script>
+const BASE = '';
+let state = {token: localStorage.getItem('spotterToken')||'', me:null};
+let ACCOUNTS=[], TEAMS=[], ACCOUNT_OPTIONS={};
+
+async function api(path, opts={}){
+  opts.headers = opts.headers||{};
+  // If body is FormData, don't set Content-Type
+  if(!(opts.body instanceof FormData)) opts.headers['Content-Type'] = 'application/json';
+  const res = await fetch(BASE+path, opts);
+  if(!res.ok){ const txt=await res.text().catch(()=>''); throw new Error('HTTP '+res.status+': '+txt.slice(0,200)); }
+  const body = await res.json();
+  if(!body.success) throw new Error(body.error||'API error');
+  return body.data;
+}
+
+// ═══ INIT ═══
+async function init(){
+  try{
+    state.me = await api('/api/auth/me?token='+encodeURIComponent(state.token)).catch(()=>({read_only:true}));
+    if(state.me.read_only){
+      document.getElementById('readOnlyBanner').style.display='flex';
+      document.getElementById('currentUserBadge').textContent='Login';
+      return;
+    }
+    if(!isAdmin()){
+      document.getElementById('readOnlyBanner').textContent='Admin privileges required.';
+      document.getElementById('readOnlyBanner').style.display='flex';
+      return;
+    }
+    document.getElementById('readOnlyBanner').style.display='none';
+    document.getElementById('adminContent').style.display='';
+    document.getElementById('currentUserBadge').textContent = state.me.account.formatted_name||'Admin';
+    await loadAccountsOptions();
+    await Promise.all([loadAdminAccounts(), loadTeams(), loadStats(), loadAuditTrail()]);
+  } catch(e){ console.error(e); }
+}
+
+function isAdmin(){return state.me?.account?.privilege_level==='admin'}
+function escapeHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+// ═══ TABS ═══
+function switchTab(name){
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  document.getElementById('tab-'+name)?.classList.add('active');
+  event.target.classList.add('active');
+  if(name==='audit') loadAuditTrail();
+  if(name==='agents') loadAgentCycle();
+}
+
+// ═══ STATS ═══
+async function loadStats(){
+  try{
+    const d=await api('/api/admin/overview?token='+encodeURIComponent(state.token)).catch(()=>null);
+    if(!d)return;
+    const c=d.counts||{};
+    document.getElementById('statsGrid').innerHTML=Object.entries(c).map(([k,v])=>'<div class="stat-card"><div class="stat-val">'+v+'</div><div class="stat-lbl">'+escapeHtml(k)+'</div></div>').join('');
+  }catch(e){}
+}
+
+// ═══ ACCOUNTS ═══
+async function loadAccountsOptions(){
+  ACCOUNT_OPTIONS=await api('/api/accounts/options').catch(()=>({}));
+  TEAMS=await api('/api/teams').catch(()=>[]);
+  updateRankOptionsFor('acct');
+  // Fill dropdowns
+  const roleSel=document.getElementById('acctRole');
+  if(roleSel) roleSel.innerHTML=(ACCOUNT_OPTIONS.work_roles||[]).map(r=>'<option>'+r+'</option>').join('');
+  const teamSel=document.getElementById('acctTeamId');
+  if(teamSel) teamSel.innerHTML='<option value="">(none)</option>'+TEAMS.map(t=>'<option value="'+t.id+'">'+(t.number||'')+' '+(t.team_type==='NCPT'?'NCPT':'CPT')+'</option>').join('');
+  // Team lead selects
+  updateTeamSelectors();
+}
+function updateTeamSelectors(){
+  ['teamLeadId','teamDeputyId','teamPlannerId','teamNcoicId'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.innerHTML='<option value="">Unassigned</option>'+ACCOUNTS.map(a=>'<option value="'+a.id+'">'+escapeHtml(a.formatted_name||'')+'</option>').join('');
+  });
+}
+function updateRankOptionsFor(prefix){
+  const br=document.getElementById(prefix+'Branch'); if(!br)return;
+  const ranks=(ACCOUNT_OPTIONS.ranks||{})[br.value]||[];
+  const el=document.getElementById(prefix+'Rank');
+  if(el) el.innerHTML=ranks.map(r=>'<option value="'+r+'">'+r+'</option>').join('');
+}
+async function loadAdminAccounts(){
+  try{
+    ACCOUNTS=await api('/api/admin/accounts?token='+encodeURIComponent(state.token)).catch(()=>[]);
+    document.getElementById('accountList').innerHTML=ACCOUNTS.map(a=>{
+      const tld=''+((a.team_display||((a.team_number||'')+' '+(a.team_type==='NCPT'?'NCPT':'CPT')))).trim()||'No Team';
+      return '<div class="item-row"><div class="item-info"><b onclick="editAccount(\''+a.id+'\')" style="cursor:pointer">'+escapeHtml(a.formatted_name||'')+'</b><br><span style="color:var(--text-muted);font-size:10px">'+escapeHtml(a.privilege_level)+' · '+escapeHtml(a.work_role||'')+' · '+escapeHtml(tld)+'</span></div><div class="item-actions"><button class="btn btn-sm" onclick="editAccount(\''+a.id+'\')">Edit</button><button class="btn btn-sm btn-danger" onclick="deleteAccount(\''+a.id+'\')">Delete</button></div></div>';
+    }).join('')||'<div class="empty-msg">No accounts</div>';
+    updateTeamSelectors();
+  }catch(e){}
+}
+function editAccount(id){
+  const a=ACCOUNTS.find(x=>x.id===id); if(!a)return;
+  ['First','Last','Name','User','Pass','Email','Phone'].forEach(k=>{const el=document.getElementById('acct'+k);if(el)el.value='';});
+  document.getElementById('acctFirst').value=a.first_name||'';
+  document.getElementById('acctLast').value=a.last_name||'';
+  document.getElementById('acctName').value=a.display_name||'';
+  document.getElementById('acctUser').value=a.username||'';
+  document.getElementById('acctPriv').value=a.privilege_level||'analyst';
+  document.getElementById('acctEmail').value=a.email||'';
+  document.getElementById('acctPhone').value=a.phone||'';
+  document.getElementById('acctBranch').value=a.service_branch||'';
+  updateRankOptionsFor('acct');
+  document.getElementById('acctRank').value=a.rank||'';
+  document.getElementById('acctRole').value=a.work_role||'';
+  document.getElementById('acctSkill').value=a.skill_level||'';
+  document.getElementById('acctTeamId').value=a.team_id||'';
+  document.getElementById('acctYears').value=a.years_experience||'0';
+  document.getElementById('acctCerts').value=a.certs||'';
+  document.getElementById('acctDegrees').value=a.degrees||'';
+  document.getElementById('acctBio').value=a.bio||'';
+}
+function clearAccountForm(){
+  ['First','Last','Name','User','Pass','Email','Phone','Certs','Degrees','Bio'].forEach(k=>{const el=document.getElementById('acct'+k);if(el)el.value='';});
+}
+async function saveAccount(){
+  const payload={
+    token:state.token,first_name:document.getElementById('acctFirst')?.value||'',
+    last_name:document.getElementById('acctLast')?.value||'',
+    display_name:document.getElementById('acctName')?.value||'',
+    username:document.getElementById('acctUser')?.value||'',
+    password:document.getElementById('acctPass')?.value||'',
+    email:document.getElementById('acctEmail')?.value||'',
+    phone:document.getElementById('acctPhone')?.value||'',
+    privilege_level:document.getElementById('acctPriv')?.value||'analyst',
+    service_branch:document.getElementById('acctBranch')?.value||'',
+    rank:document.getElementById('acctRank')?.value||'',
+    work_role:document.getElementById('acctRole')?.value||'',
+    skill_level:document.getElementById('acctSkill')?.value||'Basic',
+    team_id:document.getElementById('acctTeamId')?.value||'',
+    team:document.getElementById('acctTeamId')?.selectedOptions?.[0]?.textContent||'',
+    years_experience:parseInt(document.getElementById('acctYears')?.value||0),
+    certs:document.getElementById('acctCerts')?.value||'',
+    degrees:document.getElementById('acctDegrees')?.value||'',
+    bio:document.getElementById('acctBio')?.value||''
+  };
+  await api('/api/accounts',{method:'POST',body:JSON.stringify(payload)});
+  alert('Account saved');
+  clearAccountForm();
+  await Promise.all([loadAdminAccounts(), loadStats()]);
+}
+async function deleteAccount(id){
+  if(!confirm('Delete this account? This is permanent.'))return;
+  await api('/api/accounts/'+id,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:state.token})});
+  await loadAdminAccounts();
+}
+
+// ═══ TEAMS ═══
+async function loadTeams(){
+  try{
+    TEAMS=await api('/api/admin/teams-full?token='+encodeURIComponent(state.token)).catch(()=>[]);
+    document.getElementById('teamList').innerHTML=TEAMS.map(t=>
+      '<div class="item-row" onclick="editTeam(\''+t.id+'\')" style="cursor:pointer"><div class="item-info"><b>'+escapeHtml((t.number||'')+' '+(t.team_type==='NCPT'?'NCPT':'CPT'))+'</b><br><span style="color:var(--text-muted);font-size:10px">'+t.member_count+' members · '+escapeHtml(t.location||'No Location')+'</span></div><div class="item-actions"><button class="btn btn-sm" onclick="event.stopPropagation();editTeam(\''+t.id+'\')">Edit</button><button class="btn btn-sm btn-danger" onclick="event.stopPropagation();deleteTeam(\''+t.id+'\')">Delete</button></div></div>'
+    ).join('')||'<div class="empty-msg">No teams</div>';
+  }catch(e){}
+}
+function editTeam(id){
+  const t=TEAMS.find(x=>x.id===id); if(!t)return;
+  document.getElementById('teamType').value=t.team_type||'CPT';
+  document.getElementById('teamNumber').value=t.number||'';
+  document.getElementById('teamLogo').value=t.logo_url||'';
+  document.getElementById('teamLocation').value=t.location||'';
+  document.getElementById('teamPhone').value=t.phone||'';
+  document.getElementById('teamEmail').value=t.email||'';
+  document.getElementById('teamDesc').value=t.description||'';
+  document.getElementById('teamNotes').value=t.notes||'';
+  document.getElementById('teamLeadId').value=t.team_lead_id||'';
+  document.getElementById('teamLeadText').value=t.team_lead_text||'';
+  document.getElementById('teamDeputyId').value=t.deputy_team_lead_id||'';
+  document.getElementById('teamDeputyText').value=t.deputy_team_lead_text||'';
+  document.getElementById('teamPlannerId').value=t.planner_id||'';
+  document.getElementById('teamPlannerText').value=t.planner_text||'';
+  document.getElementById('teamNcoicId').value=t.ncoic_id||'';
+  document.getElementById('teamNcoicText').value=t.ncoic_text||'';
+}
+function clearTeamForm(){
+  ['teamNumber','teamLogo','teamLocation','teamPhone','teamEmail','teamDesc','teamNotes','teamLeadText','teamDeputyText','teamPlannerText','teamNcoicText'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  document.getElementById('teamType').value='CPT';
+  document.getElementById('teamLeadId').value='';
+  document.getElementById('teamDeputyId').value='';
+  document.getElementById('teamPlannerId').value='';
+  document.getElementById('teamNcoicId').value='';
+}
+async function saveTeam(){
+  const payload={
+    token:state.token,team_type:document.getElementById('teamType').value,
+    number:document.getElementById('teamNumber').value,
+    name:document.getElementById('teamType').value+' '+document.getElementById('teamNumber').value,
+    logo_url:document.getElementById('teamLogo').value,
+    location:document.getElementById('teamLocation').value,
+    phone:document.getElementById('teamPhone').value,
+    email:document.getElementById('teamEmail').value,
+    description:document.getElementById('teamDesc').value,
+    notes:document.getElementById('teamNotes').value,
+    team_lead_id:document.getElementById('teamLeadId').value,
+    team_lead_text:document.getElementById('teamLeadText').value,
+    deputy_team_lead_id:document.getElementById('teamDeputyId').value,
+    deputy_team_lead_text:document.getElementById('teamDeputyText').value,
+    planner_id:document.getElementById('teamPlannerId').value,
+    planner_text:document.getElementById('teamPlannerText').value,
+    ncoic_id:document.getElementById('teamNcoicId').value,
+    ncoic_text:document.getElementById('teamNcoicText').value
+  };
+  await api('/api/teams',{method:'POST',body:JSON.stringify(payload)});
+  alert('Team saved');
+  clearTeamForm();
+  await loadTeams();
+}
+async function deleteTeam(id){
+  if(!confirm('Delete this team?'))return;
+  await api('/api/teams/'+id,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:state.token})});
+  await loadTeams();
+}
+
+// ═══ AUDIT ═══
+async function loadAuditTrail(){
+  try{
+    const rows=await api('/api/audit?token='+encodeURIComponent(state.token)).catch(()=>[]);
+    document.getElementById('auditList').innerHTML=(rows.data||rows||[]).slice(0,50).map(r=>
+      '<div class="item-row"><div class="item-info"><b>'+escapeHtml(r.action)+'</b> · <span style="color:var(--text-muted)">'+escapeHtml(r.actor_name||'system')+'</span><br><span style="font-size:10px;color:var(--text-muted)">'+(r.target_type?'→ '+r.target_type+'('+escapeHtml(r.target_id)+')':'')+' · '+compactTime(r.created_at)+'</span></div></div>'
+    ).join('')||'<div class="empty-msg">No audit entries</div>';
+  }catch(e){}
+}
+function compactTime(raw){
+  if(!raw)return '';
+  try{const d=new Date(raw); if(!isNaN(d)) return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});}catch{}
+  return String(raw).slice(0,20);
+}
+
+// ═══ PASSWORD RESET ═══
+async function requestPwReset(){
+  try{
+    const r=await api('/api/auth/password-reset-request',{method:'POST',body:JSON.stringify({username:document.getElementById('pwUser').value,method:document.getElementById('pwMethod').value})});
+    document.getElementById('pwResult').innerHTML='<span style="color:var(--green)">Code sent. Challenge ID: '+r.challenge_id+'</span>';
+    if(r.demo_code) document.getElementById('pwResult').innerHTML+='<br><span style="color:var(--amber)">Demo code: '+r.demo_code+'</span>';
+  }catch(e){document.getElementById('pwResult').innerHTML='<span style="color:var(--red)">'+e.message+'</span>'}
+}
+async function verifyPwReset(){
+  try{
+    await api('/api/auth/password-reset-verify',{method:'POST',body:JSON.stringify({challenge_id:document.getElementById('pwChallengeId').value,code:document.getElementById('pwCode').value,new_password:document.getElementById('pwNewPassword').value})});
+    alert('Password reset successful. Re-login required.');
+    localStorage.removeItem('spotterToken'); location.reload();
+  }catch(e){alert('Failed: '+e.message)}
+}
+
+// ═══ AGENT CYCLE ═══
+async function loadAgentCycle(){
+  try{
+    const d=await api('/api/agents/cycle?token='+encodeURIComponent(state.token)).catch(()=>null);
+    if(d) document.getElementById('agentCycleConfig').innerHTML=
+      '<div class="form-group"><label>Interval (seconds)</label><input id="cycleInterval" value="'+d.interval_seconds+'"></div>'+
+      '<div class="form-group"><label>Enabled</label><select id="cycleEnabled"><option value="true" '+(d.enabled?'selected':'')+'>Yes</option><option value="false" '+(d.enabled?'':'selected')+'>No</option></select></div>'+
+      '<button class="btn btn-sm" onclick="saveAgentCycle()">Save</button>';
+  }catch(e){}
+}
+async function saveAgentCycle(){
+  await api('/api/agents/cycle',{method:'POST',body:JSON.stringify({token:state.token,interval_seconds:parseInt(document.getElementById('cycleInterval')?.value||120),enabled:document.getElementById('cycleEnabled')?.value==='true'})});
+  alert('Agent cycle updated');
+}
+
+// ═══ SETTINGS ═══
+async function loadSettings(){
+  try{
+    const d=await api('/api/setup/config').catch(()=>{});
+    const tw=document.getElementById('setTwofa'); if(tw)tw.value=String(!!d.security?.twofa_required);
+    const kb=document.getElementById('setKibanaUrl'); if(kb)kb.value=d.kibana?.url||'';
+  }catch(e){}
+}
+async function saveSecuritySettings(){
+  await api('/api/setup/config',{method:'POST',body:JSON.stringify({security:{twofa_required:document.getElementById('setTwofa').value==='true'}})});
+}
+async function saveKibanaSettings(){
+  await api('/api/setup/config',{method:'POST',body:JSON.stringify({kibana:{url:document.getElementById('setKibanaUrl').value}})});
+}
+
+// ═══ LOGIN ═══
+function openLoginFromAdmin(){document.getElementById('adminLoginPanel').style.display='block'}
+async function adminLogin(){
+  try{
+    const d=await api('/api/auth/login',{method:'POST',body:JSON.stringify({username:document.getElementById('loginUser').value,password:document.getElementById('loginPass').value,method:'email'})});
+    if(d.token){state.token=d.token; localStorage.setItem('spotterToken',d.token); document.getElementById('adminLoginPanel').style.display='none'; location.reload(); return;}
+    document.getElementById('adminLoginResult').innerHTML='<input id="adminLoginCode" value="'+(d.demo_code||'')+'" placeholder="Code"><button class="btn btn-sm" onclick="verifyAdminLogin(\''+d.challenge_id+'\')">Verify</button>';
+  }catch(e){document.getElementById('adminLoginResult').innerHTML='<span style="color:var(--red)">'+e.message+'</span>'}
+}
+async function verifyAdminLogin(id){
+  const d=await api('/api/auth/verify',{method:'POST',body:JSON.stringify({challenge_id:id,code:document.getElementById('adminLoginCode').value})});
+  state.token=d.token; localStorage.setItem('spotterToken',d.token); location.reload();
+}
+function openChatFromAdmin(){window.open('/operations.html?view='+encodeURIComponent(state.me?.account?.work_role?.includes('Commander')?'commander':'analyst'),'_blank')}
+
+init().catch(console.error);
+</script>
+</body></html>

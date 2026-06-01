@@ -381,6 +381,31 @@ async def openrouter_agent_summary(agent: str, evidence: dict, severity: str = "
         }
 
 
+@app.get("/admin.html")
+async def admin_page():
+    return FileResponse(FRONTEND / "admin.html")
+
+
+@app.get("/api/admin/accounts")
+async def admin_list_accounts(token: str = ""):
+    p = await P()
+    actor = await get_actor(p, token)
+    if actor["privilege_level"] != "admin":
+        return E(None, error="admin required")
+    rows = await p.fetch("select a.*, t.name as team_name, t.number as team_number, t.team_type, t.id as team_id from accounts a left join teams t on t.id=a.team_id order by a.display_name")
+    return E([account_public(r) for r in rows])
+
+
+@app.get("/api/admin/teams-full")
+async def admin_list_teams_full(token: str = ""):
+    p = await P()
+    actor = await get_actor(p, token)
+    if actor["privilege_level"] != "admin":
+        return E(None, error="admin required")
+    rows = await p.fetch("select t.*, (select count(*) from accounts where team_id=t.id) as member_count from teams t order by t.number, t.team_type")
+    return E([rd(r) for r in rows])
+
+
 @app.get("/api/health")
 async def health():
     es_ok = await ok_http(settings.elasticsearch_url)
@@ -1194,6 +1219,61 @@ async def chatbot_elastic_context(question: str) -> dict:
         return {"query": query, "total": total, "samples": samples}
     except Exception as exc:
         return {"query": query, "total": 0, "samples": [], "error": str(exc)[:500]}
+
+
+@app.get("/api/messages")
+async def list_messages(token: str = "", with_user: str = "", limit: int = 50):
+    """Direct messages between accounts."""
+    p = await P()
+    actor = await get_actor(p, token)
+    sql = "select m.*, a1.display_name as sender_name, a2.display_name as recipient_name from messages m join accounts a1 on a1.id=m.sender_id join accounts a2 on a2.id=m.recipient_id where (m.sender_id=$1 and m.recipient_id=uuid($2)) or (m.sender_id=uuid($2) and m.recipient_id=$1) order by m.created_at asc limit $3"
+    rows = await p.fetch(sql, actor["id"], with_user, limit)
+    return E([{"id":str(r["id"]),"sender_name":r["sender_name"],"recipient_name":r["recipient_name"],"body":r["body"],"read_at":ser(r["read_at"]),"created_at":ser(r["created_at"])} for r in rows])
+
+
+@app.post("/api/messages")
+async def send_message(payload: dict):
+    """Send direct message to another account."""
+    p = await P()
+    actor = await get_actor(p, payload.get("token", ""))
+    if not actor: return E(None, error="must be authenticated")
+    recipient_id = payload.get("recipient_id")
+    if not recipient_id: return E(None, error="recipient_id required")
+    r = await p.fetchrow(
+        "insert into messages(sender_id,recipient_id,body) values($1,$2,$3) returning *",
+        actor["id"], uuid.UUID(recipient_id), payload.get("body", "")
+    )
+    # Create notification for recipient
+    try:
+        await p.execute(
+            "insert into notifications(recipient_id,sender_id,n_type,body) values($1,$2,'message',$3)",
+            uuid.UUID(recipient_id), actor["id"], (actor["display_name"]+": "+payload.get("body","")[:120])
+        )
+    except: pass
+    return E(rd(r) if r else None)
+
+
+@app.post("/api/messages/{msg_id}/read")
+async def mark_message_read(msg_id: str, payload: dict):
+    await (await P()).execute("update messages set read_at=now() where id=$1", uuid.UUID(msg_id))
+    return E({"read": True})
+
+# Migration for messages table is needed:
+@app.on_event("startup")
+async def create_messages_table():
+    try:
+        p = await P()
+        await p.execute("""
+            create table if not exists messages(
+                id uuid primary key default gen_random_uuid(),
+                sender_id uuid references accounts(id),
+                recipient_id uuid references accounts(id),
+                body text,
+                read_at timestamptz,
+                created_at timestamptz default now()
+            )
+        """)
+    except: pass
 
 
 @app.post("/api/chat")
