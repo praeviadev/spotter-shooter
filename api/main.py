@@ -66,6 +66,8 @@ async def migrate_db(db):
         "create table if not exists accounts (id uuid primary key default gen_random_uuid(), username text unique not null, display_name text not null, privilege_level text not null default 'analyst', service_branch text default '', rank text default '', work_role text default '', skill_level text default 'basic', team text default '', bio text default '', certs text default '', degrees text default '', years_experience int default 0, contact text default '', created_at timestamptz default now(), updated_at timestamptz default now())",
         "alter table accounts add column if not exists email text default ''",
         "alter table accounts add column if not exists phone text default ''",
+        "alter table accounts add column if not exists first_name text default ''",
+        "alter table accounts add column if not exists last_name text default ''",
         "alter table accounts add column if not exists password_hash text default ''",
         "alter table accounts add column if not exists team_id uuid",
         "create table if not exists teams (id uuid primary key default gen_random_uuid(), team_type text not null default 'CPT', number text unique not null, name text not null, description text default '', logo_url text default '', location text default '', phone text default '', email text default '', notes text default '', team_lead_id uuid, deputy_team_lead_id uuid, planner_id uuid, ncoic_id uuid, created_at timestamptz default now(), updated_at timestamptz default now())",
@@ -130,6 +132,9 @@ async def get_actor(p, token: str = ""):
 def account_public(r):
     d = rd(r)
     d.pop("password_hash", None)
+    d["formatted_name"] = format_person(r)
+    if d.get("team_name") or d.get("name"):
+        d["team_display"] = d.get("team_name") or d.get("name")
     return d
 
 
@@ -373,6 +378,43 @@ def snake(s):
     return re.sub("_+", "_", re.sub(r"[^a-z0-9]+", "_", s.lower())).strip("_")
 
 
+def normalize_person_name(payload: dict) -> tuple[str, str, str]:
+    first = (payload.get("first_name") or payload.get("first") or "").strip()
+    last = (payload.get("last_name") or payload.get("last") or "").strip()
+    display = (payload.get("display_name") or "").strip()
+    # Backwards-compatible parse for the old single Display Name field.
+    if (not first or not last) and display:
+        parts = display.split()
+        if not first and len(parts) >= 2:
+            first = parts[0]
+        if not last and len(parts) >= 2:
+            last = " ".join(parts[1:])
+    if not display:
+        display = " ".join(x for x in [last, first] if x).strip()
+    return first, last, display or (payload.get("username") or "analyst")
+
+
+def format_person(row) -> str:
+    d = dict(row)
+    rank = (d.get("rank") or "").strip()
+    first = (d.get("first_name") or "").strip()
+    last = (d.get("last_name") or "").strip()
+    display = (d.get("display_name") or "").strip()
+    # If legacy records only have display_name like "Terry Smith", render as Last First.
+    if (not first and not last) and display:
+        parts = display.split()
+        if len(parts) >= 2:
+            first = parts[0]
+            last = " ".join(parts[1:])
+    core = " ".join(x for x in [last, first] if x).strip() or display
+    return " ".join(x for x in [rank, core] if x).strip() or display or (d.get("username") or "Analyst")
+
+
+def team_display(row) -> str:
+    d = dict(row)
+    return (d.get("name") or "").strip() or " ".join(x for x in [d.get("team_type"), d.get("number")] if x).strip() or "Unassigned"
+
+
 def _jsonish(v):
     if isinstance(v, str):
         try:
@@ -584,7 +626,7 @@ async def ensure_default_account(p):
     row = await p.fetchrow("select * from accounts order by created_at limit 1")
     if row:
         return row
-    return await p.fetchrow("insert into accounts(username,display_name,privilege_level,work_role,skill_level,team,bio) values('analyst','Analyst','analyst','network analyst','basic','','Default analyst profile') returning *")
+    return await p.fetchrow("insert into accounts(username,display_name,first_name,last_name,privilege_level,work_role,skill_level,team,bio) values('analyst','Analyst','Analyst','','analyst','Network Analyst','Basic','','Default analyst profile') returning *")
 
 
 async def build_case_final(p, case_uuid):
@@ -592,7 +634,7 @@ async def build_case_final(p, case_uuid):
     members = await p.fetch("select a.display_name,a.rank,a.service_branch,a.work_role,a.skill_level,a.team,cm.role from case_members cm join accounts a on a.id=cm.account_id where cm.case_id=$1 order by cm.joined_at", case_uuid)
     events = await p.fetch("select e.* from case_events ce join events e on e.id=ce.event_id where ce.case_id=$1 order by ce.added_at", case_uuid)
     inds = await p.fetch("select indicator_type,value from case_indicators where case_id=$1 order by created_at", case_uuid)
-    lead = "; ".join([f"{m['rank']} {m['display_name']} ({m['work_role']}, {m['skill_level']}, {m['team']})".strip() for m in members]) or c["owner"]
+    lead = "; ".join([f"{format_person(m)} ({m['work_role']}, {m['skill_level']}, {m['team']})".strip() for m in members]) or c["owner"]
     sev = events[0]["severity"] if events else "medium"
     titles = "; ".join([e["title"] for e in events[:5]]) or c["name"]
     indicators = ", ".join([f"{i['indicator_type']}:{i['value']}" for i in inds[:12]]) or "none confirmed"
@@ -840,14 +882,15 @@ async def create_account(payload: dict):
         return E(None, error="not authorized to edit this account")
     if payload.get("privilege_level") == "admin" and actor["privilege_level"] != "admin":
         payload["privilege_level"] = "analyst"
+    first_name, last_name, display_name = normalize_person_name(payload)
     password_hash = hash_password(payload.get("password")) if payload.get("password") else (existing["password_hash"] if existing else "")
     team_id = uuid.UUID(payload["team_id"]) if payload.get("team_id") else None
     r = await p.fetchrow("""
-        insert into accounts(username,display_name,privilege_level,service_branch,rank,work_role,skill_level,team,bio,certs,degrees,years_experience,contact,email,phone,password_hash,team_id)
-        values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
-        on conflict(username) do update set display_name=excluded.display_name, privilege_level=excluded.privilege_level, service_branch=excluded.service_branch, rank=excluded.rank, work_role=excluded.work_role, skill_level=excluded.skill_level, team=excluded.team, bio=excluded.bio, certs=excluded.certs, degrees=excluded.degrees, years_experience=excluded.years_experience, contact=excluded.contact, email=excluded.email, phone=excluded.phone, password_hash=excluded.password_hash, team_id=excluded.team_id, updated_at=now()
+        insert into accounts(username,display_name,first_name,last_name,privilege_level,service_branch,rank,work_role,skill_level,team,bio,certs,degrees,years_experience,contact,email,phone,password_hash,team_id)
+        values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+        on conflict(username) do update set display_name=excluded.display_name, first_name=excluded.first_name, last_name=excluded.last_name, privilege_level=excluded.privilege_level, service_branch=excluded.service_branch, rank=excluded.rank, work_role=excluded.work_role, skill_level=excluded.skill_level, team=excluded.team, bio=excluded.bio, certs=excluded.certs, degrees=excluded.degrees, years_experience=excluded.years_experience, contact=excluded.contact, email=excluded.email, phone=excluded.phone, password_hash=excluded.password_hash, team_id=excluded.team_id, updated_at=now()
         returning *
-    """, username, payload.get("display_name", username), payload.get("privilege_level", "analyst"), payload.get("service_branch", ""), payload.get("rank", ""), payload.get("work_role", "Network Analyst"), payload.get("skill_level", "Basic"), payload.get("team", ""), payload.get("bio", ""), payload.get("certs", ""), payload.get("degrees", ""), int(payload.get("years_experience") or 0), payload.get("contact", ""), payload.get("email", ""), payload.get("phone", ""), password_hash, team_id)
+    """, username, display_name, first_name, last_name, payload.get("privilege_level", "analyst"), payload.get("service_branch", ""), payload.get("rank", ""), payload.get("work_role", "Network Analyst"), payload.get("skill_level", "Basic"), payload.get("team", ""), payload.get("bio", ""), payload.get("certs", ""), payload.get("degrees", ""), int(payload.get("years_experience") or 0), payload.get("contact", ""), payload.get("email", ""), payload.get("phone", ""), password_hash, team_id)
     return E(account_public(r))
 
 
@@ -886,7 +929,7 @@ async def upsert_team(payload: dict):
         values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
         on conflict(number) do update set team_type=excluded.team_type, name=excluded.name, description=excluded.description, logo_url=excluded.logo_url, location=excluded.location, phone=excluded.phone, email=excluded.email, notes=excluded.notes, team_lead_id=excluded.team_lead_id, deputy_team_lead_id=excluded.deputy_team_lead_id, planner_id=excluded.planner_id, ncoic_id=excluded.ncoic_id, updated_at=now()
         returning *
-    """, payload.get("team_type", "CPT"), payload["number"], payload.get("name") or f"{payload['number']} Cyber Protection Team", payload.get("description", ""), payload.get("logo_url", ""), payload.get("location", ""), payload.get("phone", ""), payload.get("email", ""), payload.get("notes", ""), uuid.UUID(payload["team_lead_id"]) if payload.get("team_lead_id") else None, uuid.UUID(payload["deputy_team_lead_id"]) if payload.get("deputy_team_lead_id") else None, uuid.UUID(payload["planner_id"]) if payload.get("planner_id") else None, uuid.UUID(payload["ncoic_id"]) if payload.get("ncoic_id") else None)
+    """, payload.get("team_type", "CPT"), payload["number"], payload.get("name") or ("National Cyber Protection Team" if payload.get("team_type") == "NCPT" else "Cyber Protection Team"), payload.get("description", ""), payload.get("logo_url", ""), payload.get("location", ""), payload.get("phone", ""), payload.get("email", ""), payload.get("notes", ""), uuid.UUID(payload["team_lead_id"]) if payload.get("team_lead_id") else None, uuid.UUID(payload["deputy_team_lead_id"]) if payload.get("deputy_team_lead_id") else None, uuid.UUID(payload["planner_id"]) if payload.get("planner_id") else None, uuid.UUID(payload["ncoic_id"]) if payload.get("ncoic_id") else None)
     return E(rd(r))
 
 
