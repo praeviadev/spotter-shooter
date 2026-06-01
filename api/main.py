@@ -61,6 +61,8 @@ async def migrate_db(db):
         "alter table cases add column if not exists way_ahead text default ''",
         "alter table cases add column if not exists final_output text default ''",
         "alter table cases add column if not exists priority text default 'medium'",
+        "alter table cases add column if not exists how text default ''",
+        "alter table cases add column if not exists owner_team_id uuid references teams(id)",
         "alter table case_events add column if not exists added_at timestamptz default now()",
         "alter table case_events add column if not exists added_by uuid",
         "alter table case_events add column if not exists note text default ''",
@@ -514,6 +516,48 @@ async def require_admin_from_token(p, token: str):
     return row if row and row["privilege_level"] == "admin" else None
 
 
+async def can_access_case(p, case_id: str, actor) -> bool:
+    """Check if an account has access to a case. Permissions: admin, commander role, same team as owner, explicitly granted team, or case member."""
+    if not actor:
+        return False
+    if actor["privilege_level"] == "admin":
+        return True
+    # Commander role access
+    work_role = (actor.get("work_role") or "").lower()
+    if "commander" in work_role:
+        return True
+    # Case member access
+    is_member = await p.fetchrow(
+        "select 1 from case_members cm where cm.case_id=$1 and cm.account_id=$2",
+        case_id, actor["id"]
+    )
+    if is_member:
+        return True
+    # Same team as case owner
+    owner_team = await p.fetchval("select team_id from accounts where id=$1", actor["id"])
+    if owner_team:
+        case_owner_team = await p.fetchval("select owner_team_id from cases where id=$1", case_id)
+        if case_owner_team and owner_team == case_owner_team:
+            return True
+    # Explicitly granted team
+    actor_team_id = actor.get("team_id")
+    if actor_team_id:
+        team_grant = await p.fetchrow(
+            "select 1 from case_teams where case_id=$1 and team_id=$2",
+            case_id, actor_team_id
+        )
+        if team_grant:
+            return True
+    # ACL grants (for future per-entity grants)
+    acl_grant = await p.fetchrow(
+        "select 1 from case_acl where case_id=$1 and ((entity_type='account' AND entity_id=$2) OR (entity_type='team' AND entity_id=$3))",
+        case_id, actor["id"], actor.get("team_id")
+    )
+    if acl_grant:
+        return True
+    return False
+
+
 def _jsonish(v):
     if isinstance(v, str):
         try:
@@ -797,8 +841,8 @@ async def escalate(event_id: str, payload: dict = {}):
     case = await p.fetchrow("select * from cases where case_id=$1", cid)
     if not case:
         case = await p.fetchrow(
-            "insert into cases(case_id,session_id,name,owner,narrative_summary,ioc_tags,status,created_by) values($1,$2,$3,$4,$5,'[]'::jsonb,'open',$6) returning *",
-            cid, e["session_id"], e["title"], actor["display_name"], e["explanation"], actor["id"],
+            "insert into cases(case_id,session_id,name,owner,narrative_summary,ioc_tags,status,created_by,owner_team_id) values($1,$2,$3,$4,$5,'[]'::jsonb,'open',$6,$7) returning *",
+            cid, e["session_id"], e["title"], actor["display_name"], e["explanation"], actor["id"], actor.get("team_id"),
         )
     await p.execute("insert into case_events(case_id,event_id,added_by,note) values($1,$2,$3,$4) on conflict(case_id,event_id) do update set added_at=now(), added_by=excluded.added_by", case["id"], e["id"], actor["id"], "Escalated from alert")
     await p.execute("insert into case_members(case_id,account_id,role) values($1,$2,$3) on conflict(case_id,account_id) do update set role=excluded.role", case["id"], actor["id"], actor["work_role"] or "analyst")
@@ -815,7 +859,8 @@ def case_obj(r, event_count=0, member_count=0):
         "uuid": ser(r["id"]), "id": r["case_id"], "case_id": r["case_id"], "name": r["name"], "owner": r["owner"],
         "summary": r["narrative_summary"], "status": r["status"], "iocs": _jsonish(r["ioc_tags"]), "opened": ser(r["created_at"]),
         "updated_at": ser(r["updated_at"]), "events": event_count, "members": member_count, "bluf": r["bluf"],
-        "five_ws": _jsonish(r["five_ws"]), "technical_summary": r["technical_summary"], "way_ahead": r["way_ahead"], "final_output": r["final_output"], "how": r.get("how", "") or ""
+        "five_ws": _jsonish(r["five_ws"]), "technical_summary": r["technical_summary"], "way_ahead": r["way_ahead"], "final_output": r["final_output"], "how": r.get("how", "") or "",
+        "owner_team_id": ser(r.get("owner_team_id")),
     }
 
 
@@ -834,11 +879,14 @@ async def cases(session_id: Optional[str] = None):
 
 
 @app.get("/api/cases/{case_id}")
-async def case_detail(case_id: str):
+async def case_detail(case_id: str, token: str = ""):
     p = await P()
+    actor = await get_actor(p, token)
     c = await p.fetchrow("select * from cases where case_id=$1 or id::text=$1", case_id)
     if not c:
         return E(None, error="case not found")
+    if not await can_access_case(p, c["id"], actor):
+        return E(None, error="access denied: case restricted to case members, owner team members, commanders, or admins")
     events_rows = await p.fetch("select e.* from case_events ce join events e on e.id=ce.event_id where ce.case_id=$1 order by ce.added_at desc", c["id"])
     members = await p.fetch("select a.*, cm.role, cm.joined_at from case_members cm join accounts a on a.id=cm.account_id where cm.case_id=$1 order by cm.joined_at", c["id"])
     indicators = await p.fetch("select * from case_indicators where case_id=$1 order by created_at desc", c["id"])
@@ -1948,3 +1996,46 @@ async def startup_event():
     import asyncio
     asyncio.create_task(agent_cycle_loop())
 
+# ═══════════════════════════════════════════════════════════
+# CASE TEAM SHARING / ACL
+# ═══════════════════════════════════════════════════════════
+@app.post("/api/cases/{case_id}/teams")
+async def share_case_with_team(case_id: str, payload: dict):
+    p = await P()
+    actor = await get_actor(p, payload.get("token",""))
+    c = await p.fetchrow("select id from cases where case_id=$1 or id::text=$1", case_id)
+    if not c: return E(None, error="case not found")
+    if not await can_access_case(p, c["id"], actor): return E(None, error="access denied")
+    # Only creator/admin/commander can share
+    can_share = actor["privilege_level"] == "admin" or "commander" in (actor.get("work_role") or "").lower()
+    if not can_share: return E(None, error="only admins or commanders can share cases with teams")
+    team_id = payload.get("team_id")
+    if not team_id: return E(None, error="team_id required")
+    try:
+        await p.execute("insert into case_teams(case_id,team_id,added_by) values($1,$2,$3) on conflict do nothing", c["id"], uuid.UUID(team_id), actor["id"])
+        await p.execute("insert into case_acl(case_id,entity_type,entity_id,granted_by) values($1,'team',$2,$3) on conflict do nothing", c["id"], uuid.UUID(team_id), actor["id"])
+    except Exception: pass
+    # Also list teams granted access
+    teams = await p.fetch("select t.*, ct.added_at as shared_at from case_teams ct join teams t on t.id=ct.team_id where ct.case_id=$1", c["id"])
+    return E({"shared": True, "teams": [rd(t) for t in teams]})
+
+@app.get("/api/cases/{case_id}/teams")
+async def get_case_teams(case_id: str, token: str = ""):
+    p = await P()
+    actor = await get_actor(p, token)
+    c = await p.fetchrow("select id from cases where case_id=$1 or id::text=$1", case_id)
+    if not c: return E(None, error="case not found")
+    if not await can_access_case(p, c["id"], actor): return E(None, error="access denied")
+    rows = await p.fetch("select t.id, t.team_display, t.team_type, t.number, t.location, ct.added_at from case_teams ct join teams t on t.id=ct.team_id where ct.case_id=$1 order by ct.added_at", c["id"])
+    return E([rd(r) for r in rows])
+
+@app.delete("/api/cases/{case_id}/teams/{team_id}")
+async def revoke_case_team(case_id: str, team_id: str, payload: dict = {}):
+    p = await P()
+    actor = await get_actor(p, payload.get("token",""))
+    c = await p.fetchrow("select id from cases where case_id=$1", case_id)
+    if not c: return E(None, error="case not found")
+    if not await can_access_case(p, c["id"], actor): return E(None, error="access denied")
+    await p.execute("delete from case_teams where case_id=$1 and team_id=$2", c["id"], uuid.UUID(team_id))
+    await p.execute("delete from case_acl where case_id=$1 and entity_type='team' and entity_id=$2", c["id"], uuid.UUID(team_id))
+    return E({"revoked": True})
