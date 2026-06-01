@@ -2,6 +2,9 @@ import asyncio
 import json
 import os
 import re
+import shutil
+import subprocess
+import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -91,13 +94,23 @@ def _safe_es_url(url: str) -> str:
     parsed = urlparse((url or "").strip())
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         return settings.elasticsearch_url.rstrip("/")
+    if parsed.hostname in {"127.0.0.1", "localhost"} and parsed.port == 9209:
+        return settings.elasticsearch_url.rstrip("/")
     return (url or settings.elasticsearch_url).rstrip("/")
+
+
+def _zeek_env():
+    env = os.environ.copy()
+    host_lib = "/host-lib/x86_64-linux-gnu"
+    if Path(host_lib).exists():
+        env["LD_LIBRARY_PATH"] = host_lib + (":" + env["LD_LIBRARY_PATH"] if env.get("LD_LIBRARY_PATH") else "")
+    return env
 
 
 async def es_request(method: str, path: str, payload=None, timeout=8, base_url: Optional[str] = None, username: Optional[str] = None, password: Optional[str] = None):
     base = _safe_es_url(base_url or settings.elasticsearch_url)
     url = base + path
-    auth = (username, password) if username or password else None
+    auth = (username, password) if (username or password) and not (base == settings.elasticsearch_url.rstrip("/") and "apt29-elasticsearch" in base) else None
     client_kwargs = {"timeout": timeout}
     if auth is not None:
         client_kwargs["auth"] = auth
@@ -108,6 +121,21 @@ async def es_request(method: str, path: str, payload=None, timeout=8, base_url: 
         r = await c.request(method, url, **kwargs)
         r.raise_for_status()
         return r.json()
+
+
+async def es_bulk(lines, timeout=60, base_url: Optional[str] = None, username: Optional[str] = None, password: Optional[str] = None):
+    base = _safe_es_url(base_url or settings.elasticsearch_url)
+    auth = (username, password) if (username or password) and not (base == settings.elasticsearch_url.rstrip("/") and "apt29-elasticsearch" in base) else None
+    client_kwargs = {"timeout": timeout}
+    if auth is not None:
+        client_kwargs["auth"] = auth
+    async with httpx.AsyncClient(**client_kwargs) as c:
+        r = await c.post(base + "/_bulk", content="\n".join(lines) + "\n", headers={"Content-Type": "application/x-ndjson"})
+        r.raise_for_status()
+        data = r.json()
+        if data.get("errors"):
+            raise RuntimeError("Elasticsearch bulk indexing returned errors")
+        return data
 
 
 async def openrouter_agent_summary(agent: str, evidence: dict, severity: str = "medium") -> dict:
@@ -279,12 +307,77 @@ async def telemetry(payload: dict):
             "version": info.get("version", {}).get("number"),
             "url": configured,
             "effective_url": _safe_es_url(configured),
-            "auth_mode": "provided" if username or password else "none",
+            "auth_mode": "none" if _safe_es_url(configured) == settings.elasticsearch_url.rstrip("/") and "apt29-elasticsearch" in settings.elasticsearch_url else ("provided" if username or password else "none"),
             "indexes": indexes,
             "total_docs": sum(x["docs"] for x in indexes),
         })
     except Exception as exc:
         return E({"connected": False, "url": configured, "effective_url": _safe_es_url(configured), "indexes": [], "total_docs": 0}, error=str(exc) or exc.__class__.__name__)
+
+
+@app.post("/api/pcap/upload")
+async def pcap_upload(
+    file: UploadFile = File(...),
+    url: str = Form(""),
+    username: str = Form(""),
+    password: str = Form(""),
+    index_pattern: str = Form(""),
+):
+    zeek_bin = shutil.which("zeek")
+    has_docker_socket = Path("/var/run/docker.sock").exists()
+    if not zeek_bin and not has_docker_socket:
+        return E({"indexed_docs": 0, "logs": []}, error="Zeek is not installed and Docker socket is unavailable for the Zeek worker image")
+    safe_name = Path(file.filename or "upload.pcap").name
+    ext = Path(safe_name).suffix.lower()
+    if ext not in {".pcap", ".pcapng", ".cap"}:
+        return E({"indexed_docs": 0, "logs": []}, error="Upload must be .pcap, .pcapng, or .cap")
+    configured = url or settings.elasticsearch_url
+    user = username or None
+    pw = password or None
+    with tempfile.TemporaryDirectory(prefix="spotter-pcap-") as td:
+        work = Path(td)
+        pcap_path = work / safe_name
+        pcap_path.write_bytes(await file.read())
+        try:
+            if has_docker_socket:
+                proc = subprocess.run([
+                    "docker", "run", "--rm", "-v", f"{work}:/work", "-w", "/work",
+                    "zeek/zeek:latest", "zeek", "-C", "-r", safe_name, "LogAscii::use_json=T"
+                ], cwd=work, capture_output=True, text=True, timeout=180)
+            else:
+                proc = subprocess.run([zeek_bin, "-C", "-r", str(pcap_path), "LogAscii::use_json=T"], cwd=work, capture_output=True, text=True, timeout=180, env=_zeek_env())
+        except subprocess.TimeoutExpired:
+            return E({"indexed_docs": 0, "logs": []}, error="Zeek timed out processing the PCAP")
+        if proc.returncode != 0:
+            return E({"indexed_docs": 0, "logs": [], "stderr": proc.stderr[-1000:]}, error="Zeek failed to process the PCAP")
+        logs = sorted(work.glob("*.log"))
+        if not logs:
+            return E({"indexed_docs": 0, "logs": []}, error="Zeek produced no logs from that PCAP")
+        index = "spotter-zeek-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        bulk = []
+        docs = 0
+        for log in logs:
+            log_type = log.stem
+            for line in log.read_text(errors="ignore").splitlines():
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                try:
+                    doc = json.loads(line)
+                except Exception:
+                    continue
+                doc["spotter_source"] = "pcap_upload"
+                doc["pcap_filename"] = safe_name
+                doc["zeek_log_type"] = log_type
+                bulk.append(json.dumps({"index": {"_index": index}}))
+                bulk.append(json.dumps(doc, default=str))
+                docs += 1
+                if len(bulk) >= 1000:
+                    await es_bulk(bulk, base_url=configured, username=user, password=pw)
+                    bulk = []
+        if bulk:
+            await es_bulk(bulk, base_url=configured, username=user, password=pw)
+        return E({"filename": safe_name, "index": index, "indexed_docs": docs, "logs": [p.stem for p in logs], "effective_url": _safe_es_url(configured)})
 
 
 @app.post("/api/setup/model/test")

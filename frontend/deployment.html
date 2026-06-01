@@ -1953,9 +1953,13 @@ html, body { height: 100%; }
     <span class="logo-sub">Deployment Console v2.1</span>
   </div>
   <div class="header-right">
-    <div class="sys-badge">
+    <div class="sys-badge" id="stackBadge">
       <span class="dot green"></span>
       STACK NOMINAL
+    </div>
+    <div class="sys-badge" id="agentStackBadge" style="display:none;color:var(--green);">
+      <span class="dot green"></span>
+      <span id="agentStackText">7 AGENTS ONLINE</span>
     </div>
     <div class="sys-badge" style="color:var(--text-muted);">
       SESSION: OPS-20260529
@@ -2057,26 +2061,8 @@ html, body { height: 100%; }
         </tr>
       </thead>
       <tbody id="fileTableBody">
-        <tr>
-          <td>ASOM_Q2_2026.pdf</td>
-          <td><span class="tag tag-yes">ASOM</span></td>
-          <td><span class="tag tag-yes">✓ Yes</span></td>
-          <td><span class="tag tag-yes">✓ Yes</span></td>
-          <td><button class="btn btn-danger">Remove</button></td>
-        </tr>
-        <tr>
-          <td>Intel_Report_APT41.pdf</td>
-          <td><span class="tag tag-yes">Intel</span></td>
-          <td><span class="tag tag-yes">✓ Yes</span></td>
-          <td><span class="tag tag-pending">Indexing...</span></td>
-          <td><button class="btn btn-danger">Remove</button></td>
-        </tr>
-        <tr>
-          <td>Customer_Network_Notes_v3.docx</td>
-          <td><span class="tag tag-yes">Network</span></td>
-          <td><span class="tag tag-pending">Parsing...</span></td>
-          <td><span class="tag tag-no">Pending</span></td>
-          <td><button class="btn btn-danger">Remove</button></td>
+        <tr id="emptyDocRow">
+          <td colspan="5" style="color:var(--text-muted);font-family:var(--mono);text-transform:uppercase;letter-spacing:.08em;">No documents indexed yet.</td>
         </tr>
       </tbody>
     </table>
@@ -2124,27 +2110,27 @@ html, body { height: 100%; }
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Elasticsearch URL</label>
-        <input class="form-input" type="text" placeholder="https://elasticsearch.example.com" value="">
+        <input class="form-input" id="elasticUrl" type="text" placeholder="http://127.0.0.1:9209" value="http://127.0.0.1">
       </div>
       <div class="form-group">
         <label class="form-label">Port</label>
-        <input class="form-input" type="text" placeholder="9200" value="9200">
+        <input class="form-input" id="elasticPort" type="text" placeholder="9209" value="9209">
       </div>
     </div>
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Username</label>
-        <input class="form-input" type="text" placeholder="elastic" value="">
+        <input class="form-input" id="elasticUsername" type="text" placeholder="blank for internal lab; use elastic only if security is enabled" value="">
       </div>
       <div class="form-group">
         <label class="form-label">Password / API Key</label>
-        <input class="form-input" type="password" placeholder="••••••••••••" >
+        <input class="form-input" id="elasticPassword" type="password" placeholder="blank for internal lab; not the Kibana/Traefik password" >
       </div>
     </div>
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Index Pattern</label>
-        <input class="form-input" type="text" placeholder="zeek-*,suricata-*" value="botsv3-*,apt29-*">
+        <input class="form-input" id="elasticIndexPattern" type="text" placeholder="botsv3-*,apt29-*" value="botsv3-*,apt29-*">
       </div>
       <div class="form-group">
         <label class="form-label">TLS Verify</label>
@@ -2155,7 +2141,16 @@ html, body { height: 100%; }
       </div>
     </div>
 
-    <button class="btn btn-secondary" onclick="testConnection()">Test Connection</button>
+    <div id="pcapUploadPanel" style="display:none;margin-bottom:14px;">
+      <div class="warn-box" style="margin-bottom:12px;">
+        <div class="warn-label">PCAP Upload // Zeek Conversion</div>
+        Upload a .pcap or .pcapng file to run it through Zeek and index the resulting JSON logs into Elasticsearch.
+      </div>
+      <input class="form-input" id="pcapFile" type="file" accept=".pcap,.pcapng,.cap">
+      <button class="btn btn-secondary" onclick="uploadPcap()">Upload PCAP → Zeek → Elastic</button>
+    </div>
+
+    <button class="btn btn-secondary" id="telemetryTestBtn" onclick="testConnection()">Test Connection</button>
 
     <div class="conn-result" id="connResult" style="display:none">
       <div class="conn-result-head"><span>✓</span> Connection Successful</div>
@@ -2534,28 +2529,18 @@ html, body { height: 100%; }
 </main>
 
 
-  <div style="font-family:var(--display);font-size:48px;font-weight:700;letter-spacing:0.08em;color:#e8edf0;text-transform:uppercase;">Hunt Active</div>
-  <div style="font-family:var(--mono);font-size:13px;color:var(--text-dim);text-align:center;max-width:380px;line-height:1.6;">Transitioning to Operational Console. 7 agents are online and processing telemetry.</div>
-  
-</div>
-
-
-
-</div>
-
-
 <!-- LAUNCH OVERLAY -->
 <div id="launchOverlay">
   <div style="display:flex;flex-direction:column;align-items:flex-start;margin-bottom:28px;">
     <div class="lo-line" id="lo1">Initializing agent runtime...</div>
-    <div class="lo-line" id="lo2">Connecting to Elastic &mdash; zeek-*, suricata-*</div>
-    <div class="lo-line" id="lo3">Loading Qdrant vector index &mdash; 8 documents</div>
-    <div class="lo-line" id="lo4">Starting Zeek Worker process</div>
-    <div class="lo-line" id="lo5">Spawning 7 agent threads</div>
-    <div class="lo-line lo-final" id="lo6">All systems nominal &mdash; hunt active</div>
+    <div class="lo-line" id="lo2">Connecting to Elastic telemetry</div>
+    <div class="lo-line" id="lo3">Loading operator documents</div>
+    <div class="lo-line" id="lo4">Starting telemetry processors</div>
+    <div class="lo-line" id="lo5">Spawning selected agent threads</div>
+    <div class="lo-line lo-final" id="lo6">Stack nominal &mdash; agents online</div>
   </div>
-  <div class="lo-big" id="loBig">Hunt <span>Active</span></div>
-  <div class="lo-sub" id="loSub">OPS-20260529 // llama3.1:70b // 7 Agents Online</div>
+  <div class="lo-big" id="loBig">Stack <span>Nominal</span></div>
+  <div class="lo-sub" id="loSub">Agents Online</div>
   <div class="lo-btns" id="loBtns">
     <button class="btn lo-btn-a" onclick="enterOps('analyst')">Open Analyst View &#8594;</button>
     <button class="btn lo-btn-c" onclick="enterOps('commander')">Commander View</button>
@@ -2576,8 +2561,8 @@ html, body { height: 100%; }
       <button class="role-btn" id="btnCommander" onclick="switchOpsView('commander')">Commander View</button>
     </div>
     <div class="header-meta">
-      <div style="display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;letter-spacing:0.1em;color:var(--green);text-transform:uppercase;"><span class="dot green"></span> Hunt Active</div>
-      <div class="header-tag">OPS-20260529 // llama3.1:70b</div>
+      <div style="display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;letter-spacing:0.1em;color:var(--green);text-transform:uppercase;"><span class="dot green"></span> Stack Nominal</div>
+      <div class="header-tag" id="opsHeaderTag">Agents Online</div>
       <button class="admin-link" onclick="returnToAdmin()">&#8592; Admin</button>
     </div>
   </header>
@@ -2792,7 +2777,8 @@ const state = {
   agents: [],
   selectedTelemetry: 'elastic',
   selectedModel: 'ollama',
-  modelConfig: {}
+  modelConfig: {},
+  selectedAgentCount: 7
 };
 
 async function api(path, options = {}) {
@@ -2862,7 +2848,17 @@ function goTo(n) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 async function beginSetup() { await loadHealth(); setTimeout(() => goTo(1), 500); }
-function selectTelemetry(el, provider='elastic') { state.selectedTelemetry = provider; document.querySelectorAll('.provider-grid .provider-card').forEach(c => c.classList.remove('selected')); el.classList.add('selected'); }
+function selectTelemetry(el, provider='elastic') {
+  state.selectedTelemetry = provider;
+  document.querySelectorAll('.provider-grid .provider-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  const pcap = document.getElementById('pcapUploadPanel');
+  const testBtn = document.getElementById('telemetryTestBtn');
+  if (pcap) pcap.style.display = provider === 'pcap' ? 'block' : 'none';
+  if (testBtn) testBtn.textContent = provider === 'pcap' ? 'Test Elastic Target' : 'Test Connection';
+  const result = document.getElementById('connResult');
+  if (result) result.style.display = 'none';
+}
 const MODEL_PRESETS = {
   ollama: {title:'Ollama Configuration', url:'http://localhost:11434', key:'', keyPlaceholder:'(Not required for Ollama)', model:'llama3.1:70b', context:'128000', temperature:'0.1', maxTokens:'4096'},
   openai: {title:'OpenAI Configuration', url:'https://api.openai.com/v1', key:'', keyPlaceholder:'sk-...', model:'gpt-4o-mini', context:'128000', temperature:'0.1', maxTokens:'4096'},
@@ -2902,27 +2898,51 @@ function selectModel(el, provider='ollama') {
   applyModelPreset(provider);
 }
 
+function readTelemetryForm() {
+  let url = document.getElementById('elasticUrl')?.value || '';
+  const port = document.getElementById('elasticPort')?.value || '';
+  if (url && port && !/:[0-9]+$/.test(url.replace(/\/$/, ''))) url = url.replace(/\/$/, '') + ':' + port;
+  return {
+    provider: state.selectedTelemetry,
+    url,
+    port,
+    username: document.getElementById('elasticUsername')?.value || '',
+    password: document.getElementById('elasticPassword')?.value || '',
+    index_pattern: document.getElementById('elasticIndexPattern')?.value || ''
+  };
+}
 async function testConnection() {
   const r = document.getElementById('connResult');
   r.style.display = 'block';
   r.innerHTML = '<div class="conn-result-head"><span>…</span> Testing Elastic connection</div>';
   try {
-    const inputs = [...document.querySelectorAll('#elasticConfig input')];
-    const payload = {
-      provider: state.selectedTelemetry,
-      url: inputs[0]?.value || '',
-      port: inputs[1]?.value || '',
-      username: inputs[2]?.value || '',
-      password: inputs[3]?.value || '',
-      index_pattern: inputs[4]?.value || ''
-    };
-    if (payload.url && payload.port && !/:[0-9]+$/.test(payload.url.replace(/\/$/, ''))) payload.url = payload.url.replace(/\/$/, '') + ':' + payload.port;
+    const payload = readTelemetryForm();
     const data = await api('/api/setup/telemetry/test', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
     state.telemetry = data;
+    const idx = (data.indexes || []).slice(0, 8).map(x => `<span class="index-tag">${escapeHtml(x.index)} // ${Number(x.docs || 0).toLocaleString()}</span>`).join('');
     r.innerHTML = `<div class="conn-result-head"><span>✓</span> Connection Successful</div>
-      <div class="conn-grid"><div><b>Cluster</b><span>${escapeHtml(data.cluster || 'unknown')}</span></div><div><b>Total Docs</b><span>${Number(data.total_docs || 0).toLocaleString()}</span></div><div><b>Indices</b><span>${(data.indexes || []).length}</span></div></div>`;
+      <div class="conn-grid"><div><b>Cluster</b><span>${escapeHtml(data.cluster || 'unknown')}</span></div><div><b>Total Docs</b><span>${Number(data.total_docs || 0).toLocaleString()}</span></div><div><b>Auth</b><span>${escapeHtml(data.auth_mode || 'none')}</span></div></div>
+      <div style="color:var(--text-dim); margin:10px 0 8px;">Found indexes:</div><div class="index-list">${idx || '<span class="index-tag">none</span>'}</div>`;
   } catch (e) {
     r.innerHTML = `<div class="conn-result-head"><span>!</span> Connection Failed</div><div>${escapeHtml(e.message)}</div>`;
+  }
+}
+async function uploadPcap() {
+  const r = document.getElementById('connResult');
+  const file = document.getElementById('pcapFile')?.files?.[0];
+  r.style.display = 'block';
+  if (!file) { r.innerHTML = '<div class="conn-result-head"><span>!</span> Select a PCAP first</div>'; return; }
+  r.innerHTML = '<div class="conn-result-head"><span>…</span> Running PCAP through Zeek</div>';
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const cfg = readTelemetryForm();
+    Object.entries(cfg).forEach(([k,v]) => fd.append(k, v || ''));
+    const data = await api('/api/pcap/upload', {method:'POST', body:fd});
+    r.innerHTML = `<div class="conn-result-head"><span>✓</span> PCAP Indexed</div>
+      <div class="conn-grid"><div><b>Index</b><span>${escapeHtml(data.index)}</span></div><div><b>Zeek Logs</b><span>${escapeHtml((data.logs || []).join(', ') || 'none')}</span></div><div><b>Docs</b><span>${Number(data.indexed_docs || 0).toLocaleString()}</span></div></div>`;
+  } catch (e) {
+    r.innerHTML = `<div class="conn-result-head"><span>!</span> PCAP Upload Failed</div><div>${escapeHtml(e.message)}</div>`;
   }
 }
 async function testModel() {
@@ -2943,6 +2963,7 @@ async function handleFiles(files) {
     tr.innerHTML = `<td>${escapeHtml(f.name)}</td><td><span class="tag tag-yes">DOC</span></td><td><span class="tag tag-pending">Uploading...</span></td><td><span class="tag tag-no">Pending</span></td><td><button class="btn btn-danger" onclick="this.closest('tr').remove()">Remove</button></td>`;
     tbody.appendChild(tr);
     try {
+      const empty = document.getElementById('emptyDocRow'); if (empty) empty.remove();
       const fd = new FormData(); fd.append('file', f); if (state.sessionId) fd.append('session_id', state.sessionId);
       const data = await api('/api/documents/upload', {method:'POST', body:fd});
       state.sessionId = state.sessionId || data.session_id;
@@ -2960,8 +2981,13 @@ async function launchHunt() {
   ['lo1','lo2','lo3','lo4','lo5','lo6'].forEach((id, i) => setTimeout(() => document.getElementById(id).classList.add('los'), 250 + i * 350));
   try {
     const selectedAgents = [...document.querySelectorAll('.agent-item.selected')].map(x => x.textContent.replace('✓','').trim());
+    state.selectedAgentCount = selectedAgents.length;
     const data = await api('/api/setup/launch', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({telemetry:state.telemetry, model:readModelForm(), agents:selectedAgents})});
     state.sessionId = data.session_id;
+    const agentBadge = document.getElementById('agentStackBadge');
+    const agentText = document.getElementById('agentStackText');
+    if (agentBadge) agentBadge.style.display = 'flex';
+    if (agentText) agentText.textContent = `${selectedAgents.length} AGENTS ONLINE`;
     document.getElementById('loSub').innerHTML = `${escapeHtml(data.name || 'HUNT')} // ${selectedAgents.length} Agents Online`;
     await refreshOpsData();
   } catch (e) {

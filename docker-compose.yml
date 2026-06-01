@@ -27,9 +27,16 @@ services:
     build: {context: ., dockerfile: api/Dockerfile}
     container_name: spotter-api
     env_file: .env
+    volumes:
+      - /tmp:/tmp
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/bin/docker:/usr/bin/docker:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on: {postgres: {condition: service_healthy}, redis: {condition: service_healthy}, qdrant: {condition: service_started}, minio: {condition: service_started}}
+    networks:
+      - default
+      - apt29_internal
     restart: unless-stopped
   agents:
     build: {context: ., dockerfile: agents/Dockerfile}
@@ -45,4 +52,9 @@ services:
       - "127.0.0.1:8097:80"
     volumes: [./caddy/Caddyfile:/etc/caddy/Caddyfile:ro]
     restart: unless-stopped
-volumes: {spotter_postgres: {}, spotter_qdrant: {}, spotter_minio: {}}
+volumes: {spotter_postgres: {}, spotter_qdrant: {}, spotter_minio: {}, spotter_pcap: {}}
+networks:
+  default:
+  apt29_internal:
+    external: true
+    name: apt29-elastic_internal
