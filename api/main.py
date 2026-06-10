@@ -54,6 +54,10 @@ def E(data=None, error=None, meta=None):
 
 async def migrate_db(db):
     stmts = [
+        # Base tables first: later alters reference them.
+        "create table if not exists accounts (id uuid primary key default gen_random_uuid(), username text unique not null, display_name text not null, privilege_level text not null default 'analyst', service_branch text default '', rank text default '', work_role text default '', skill_level text default 'basic', team text default '', bio text default '', certs text default '', degrees text default '', years_experience int default 0, contact text default '', created_at timestamptz default now(), updated_at timestamptz default now())",
+        "create table if not exists teams (id uuid primary key default gen_random_uuid(), team_type text not null default 'CPT', number text unique not null, name text not null, description text default '', logo_url text default '', location text default '', phone text default '', email text default '', notes text default '', team_lead_id uuid, deputy_team_lead_id uuid, planner_id uuid, ncoic_id uuid, created_at timestamptz default now(), updated_at timestamptz default now())",
+        "alter table events add column if not exists agent_summary jsonb default '{}'::jsonb",
         "alter table cases add column if not exists created_by uuid",
         "alter table cases add column if not exists bluf text default ''",
         "alter table cases add column if not exists five_ws jsonb default '{}'::jsonb",
@@ -66,14 +70,12 @@ async def migrate_db(db):
         "alter table case_events add column if not exists added_at timestamptz default now()",
         "alter table case_events add column if not exists added_by uuid",
         "alter table case_events add column if not exists note text default ''",
-        "create table if not exists accounts (id uuid primary key default gen_random_uuid(), username text unique not null, display_name text not null, privilege_level text not null default 'analyst', service_branch text default '', rank text default '', work_role text default '', skill_level text default 'basic', team text default '', bio text default '', certs text default '', degrees text default '', years_experience int default 0, contact text default '', created_at timestamptz default now(), updated_at timestamptz default now())",
         "alter table accounts add column if not exists email text default ''",
         "alter table accounts add column if not exists phone text default ''",
         "alter table accounts add column if not exists first_name text default ''",
         "alter table accounts add column if not exists last_name text default ''",
         "alter table accounts add column if not exists password_hash text default ''",
         "alter table accounts add column if not exists team_id uuid",
-        "create table if not exists teams (id uuid primary key default gen_random_uuid(), team_type text not null default 'CPT', number text unique not null, name text not null, description text default '', logo_url text default '', location text default '', phone text default '', email text default '', notes text default '', team_lead_id uuid, deputy_team_lead_id uuid, planner_id uuid, ncoic_id uuid, created_at timestamptz default now(), updated_at timestamptz default now())",
         "alter table teams add column if not exists team_lead_text text default ''",
         "alter table teams add column if not exists deputy_team_lead_text text default ''",
         "alter table teams add column if not exists planner_text text default ''",
@@ -92,6 +94,17 @@ async def migrate_db(db):
         "insert into enrichment_configs(name, provider_type, enabled, base_url, notes, config) values ('Local OpenCTI','opencti',false,'http://opencti:8080','Local OpenCTI enrichment. Configure URL/token before enabling.', '{\"token_env\":\"OPENCTI_TOKEN\"}'::jsonb) on conflict(name) do nothing",
         "insert into enrichment_configs(name, provider_type, enabled, base_url, notes, config) values ('VirusTotal','virustotal',false,'https://www.virustotal.com/api/v3','Optional cloud enrichment. Disabled by default; requires API key.', '{\"api_key_env\":\"VIRUSTOTAL_API_KEY\"}'::jsonb) on conflict(name) do nothing",
         "insert into enrichment_configs(name, provider_type, enabled, base_url, notes, config) values ('Custom HTTP Enrichment','custom_http',false,'','Operator-defined HTTP enrichment endpoint. Disabled by default.', '{}'::jsonb) on conflict(name) do nothing",
+        "create table if not exists password_resets (id uuid primary key default gen_random_uuid(), account_id uuid references accounts(id) on delete cascade, code_hash text not null, delivered_to text default '', method text default 'email', expires_at timestamptz not null, used_at timestamptz, created_at timestamptz default now())",
+        "create table if not exists notifications (id uuid primary key default gen_random_uuid(), recipient_id uuid references accounts(id) on delete cascade, sender_id uuid references accounts(id) on delete set null, n_type text default 'info', body text default '', case_id uuid references cases(id) on delete cascade, event_id text, read_at timestamptz, created_at timestamptz default now())",
+        "create table if not exists audit_trail (id uuid primary key default gen_random_uuid(), actor_id uuid references accounts(id) on delete set null, action text default '', target_type text default '', target_id text default '', details jsonb default '{}'::jsonb, created_at timestamptz default now())",
+        "create table if not exists attck_mappings (id uuid primary key default gen_random_uuid(), case_id uuid references cases(id) on delete cascade, technique_id text not null, technique_name text default '', evidence text default '', created_by uuid references accounts(id) on delete set null, created_at timestamptz default now())",
+        "create table if not exists saved_pivots (id uuid primary key default gen_random_uuid(), name text default '', description text default '', query text default '', dsl jsonb default '{}'::jsonb, index_pattern text default '', time_range text default '', created_by uuid references accounts(id) on delete set null, owner_id uuid references accounts(id) on delete cascade, shared boolean default false, created_at timestamptz default now())",
+        "create table if not exists case_teams (case_id uuid references cases(id) on delete cascade, team_id uuid references teams(id) on delete cascade, added_by uuid references accounts(id) on delete set null, added_at timestamptz default now(), primary key(case_id, team_id))",
+        "create table if not exists case_acl (case_id uuid references cases(id) on delete cascade, entity_type text not null, entity_id uuid not null, granted_by uuid references accounts(id) on delete set null, granted_at timestamptz default now(), primary key(case_id, entity_type, entity_id))",
+        "create table if not exists messages (id uuid primary key default gen_random_uuid(), sender_id uuid references accounts(id) on delete cascade, recipient_id uuid references accounts(id) on delete cascade, body text default '', read_at timestamptz, created_at timestamptz default now())",
+        "create table if not exists chat_history (id uuid primary key default gen_random_uuid(), token text not null, role text not null default 'analyst', seq int not null default 0, message text not null, answer text not null, created_at timestamptz default now())",
+        "create table if not exists signatures (id uuid primary key default gen_random_uuid(), name text not null, description text default '', field text default '', value text not null, severity text default 'medium', enabled boolean default true, created_by uuid references accounts(id) on delete cascade, created_by_name text default '', last_total bigint default -1, last_run_at timestamptz, last_hit_at timestamptz, created_at timestamptz default now(), updated_at timestamptz default now())",
+        "create table if not exists agent_state (agent text primary key, last_total bigint default -1, last_run_at timestamptz, details jsonb default '{}'::jsonb)",
         """insert into teams(team_type,number,name) values ('CPT','100','100 Cyber Protection Team'),('CPT','101','101 Cyber Protection Team'),('CPT','150','150 Cyber Protection Team'),('CPT','151','151 Cyber Protection Team'),('CPT','152','152 Cyber Protection Team'),('CPT','153','153 Cyber Protection Team'),('CPT','154','154 Cyber Protection Team'),('CPT','155','155 Cyber Protection Team'),('CPT','156','156 Cyber Protection Team'),('CPT','200','200 Cyber Protection Team'),('CPT','201','201 Cyber Protection Team'),('CPT','400','400 Cyber Protection Team'),('CPT','401','401 Cyber Protection Team'),('CPT','600','600 Cyber Protection Team'),('CPT','503','503 Cyber Protection Team'),('NCPT','01','01 National Cyber Protection Team'),('NCPT','03','03 National Cyber Protection Team'),('NCPT','05','05 National Cyber Protection Team'),('NCPT','23','23 National Cyber Protection Team') on conflict(number) do nothing""",
     ]
     async with db.acquire() as conn:
@@ -108,7 +121,7 @@ RANKS = {
 }
 WORK_ROLES = ["Analytic Support Officer", "Data Engineer", "Host Analyst", "Network Analyst", "Planner", "Cyber Integration Technician", "Master Gunner", "Team Lead", "Deputy Team Lead", "NCOIC", "Commander"]
 SKILL_LEVELS = ["Basic", "Senior", "Master"]
-PRIVILEGE_LEVELS = ["admin", "analyst"]
+PRIVILEGE_LEVELS = ["analyst", "commander", "admin"]
 TEAM_ROLES = ["Team Lead", "Deputy Team Lead", "Planner", "NCOIC"]
 
 
@@ -133,11 +146,17 @@ def hash_code(code: str) -> str:
     return hmac.new(settings.app_secret.encode(), code.encode(), hashlib.sha256).hexdigest()
 
 
+async def session_actor(p, token: str):
+    """Strict session lookup: returns the account only for a valid, unexpired session token."""
+    if not token:
+        return None
+    return await p.fetchrow("select a.* from auth_sessions s join accounts a on a.id=s.account_id where s.token=$1 and s.expires_at>now()", token)
+
+
 async def get_actor(p, token: str = ""):
-    if token:
-        row = await p.fetchrow("select a.* from auth_sessions s join accounts a on a.id=s.account_id where s.token=$1 and s.expires_at>now()", token)
-        if row:
-            return row
+    row = await session_actor(p, token)
+    if row:
+        return row
     return await ensure_default_account(p)
 
 
@@ -440,6 +459,7 @@ BUILTIN = [
     ("Windows Logon Anomaly Agent", "windows_logon_agent", "Windows Event Log", "host", False),
     ("PowerShell Activity Agent", "powershell_agent", "Sysmon / Windows Event Log", "host", False),
     ("Service Account Activity Agent", "service_account_agent", "Windows Event Log", "host", False),
+    ("Signature Match Agent", "signature_agent", "Analyst signatures", "network", True),
 ]
 
 
@@ -525,9 +545,9 @@ async def can_access_case(p, case_id: str, actor) -> bool:
     """Check if an account has access to a case. Permissions: admin, commander role, same team as owner, explicitly granted team, or case member."""
     if not actor:
         return False
-    if actor["privilege_level"] == "admin":
+    if actor["privilege_level"] in ("admin", "commander"):
         return True
-    # Commander role access
+    # Commander work-role access
     work_role = (actor.get("work_role") or "").lower()
     if "commander" in work_role:
         return True
@@ -1003,9 +1023,12 @@ async def account_options():
 
 @app.get("/api/auth/me")
 async def auth_me(token: str = ""):
-    if not token:
+    p = await P()
+    actor = await session_actor(p, token)
+    if not actor:
         return E({"authenticated": False, "read_only": True, "account": None, "message": "Read-only view. Please login or Create an Account."})
-    actor = await get_actor(await P(), token)
+    # Loading any page while logged in counts as presence.
+    await p.execute("update auth_sessions set last_seen_at=now() where token=$1", token)
     return E({"authenticated": True, "read_only": False, "account": account_public(actor), "message": "Authenticated"})
 
 
@@ -1065,12 +1088,15 @@ async def accounts(token: str = ""):
 @app.post("/api/accounts")
 async def create_account(payload: dict):
     p = await P()
-    actor = await get_actor(p, payload.get("token", ""))
+    # Strict session: an anonymous request must never inherit the default/first account's privileges.
+    actor = await session_actor(p, payload.get("token", ""))
     username = payload.get("username") or snake(payload.get("display_name", "analyst"))
     existing = await p.fetchrow("select * from accounts where username=$1", username)
     if existing and not can_edit_account(actor, existing["id"]):
         return E(None, error="not authorized to edit this account")
-    if payload.get("privilege_level") == "admin" and actor["privilege_level"] != "admin":
+    if payload.get("privilege_level") not in PRIVILEGE_LEVELS:
+        payload["privilege_level"] = "analyst"
+    if payload.get("privilege_level") in ("admin", "commander") and (not actor or actor["privilege_level"] != "admin"):
         payload["privilege_level"] = "analyst"
     first_name, last_name, display_name = normalize_person_name(payload)
     password_hash = hash_password(payload.get("password")) if payload.get("password") else (existing["password_hash"] if existing else "")
@@ -1144,6 +1170,25 @@ async def delete_account(account_id: str, token: str = ""):
     await p.execute("delete from case_members where account_id=$1", a["id"])
     await p.execute("delete from login_challenges where account_id=$1", a["id"])
     await p.execute("delete from auth_sessions where account_id=$1", a["id"])
+    # Newer feature tables; existing databases may carry non-cascading FKs, so clear them explicitly.
+    cleanup = [
+        ("delete from messages where sender_id=$1 or recipient_id=$1",),
+        ("delete from notifications where recipient_id=$1",),
+        ("update notifications set sender_id=null where sender_id=$1",),
+        ("delete from saved_pivots where owner_id=$1",),
+        ("update saved_pivots set created_by=null where created_by=$1",),
+        ("update audit_trail set actor_id=null where actor_id=$1",),
+        ("update attck_mappings set created_by=null where created_by=$1",),
+        ("update case_teams set added_by=null where added_by=$1",),
+        ("update case_acl set granted_by=null where granted_by=$1",),
+        ("delete from password_resets where account_id=$1",),
+        ("delete from signatures where created_by=$1",),
+    ]
+    for (stmt,) in cleanup:
+        try:
+            await p.execute(stmt, a["id"])
+        except Exception:
+            pass
     await p.execute("delete from accounts where id=$1", a["id"])
     return E({"deleted": True, "account_id": str(a["id"]), "username": a["username"]})
 
@@ -1186,6 +1231,21 @@ async def team_detail(team_id: str):
         aid = t[field]
         leadership[field] = account_public(await p.fetchrow("select * from accounts where id=$1", aid)) if aid else None
     return E({**team_public(t), "leadership": leadership, "members": [account_public(m) for m in members]})
+
+
+@app.delete("/api/teams/{team_id}")
+async def delete_team(team_id: str, token: str = "", payload: dict = {}):
+    p = await P()
+    actor = await require_admin_from_token(p, token or (payload or {}).get("token", ""))
+    if not actor:
+        return E(None, error="admin required")
+    t = await p.fetchrow("select * from teams where id=$1 or number=$2", uuid.UUID(team_id) if re.match(r"^[0-9a-f-]{36}$", team_id, re.I) else None, team_id)
+    if not t:
+        return E(None, error="team not found")
+    await p.execute("update accounts set team_id=null where team_id=$1", t["id"])
+    await p.execute("update cases set owner_team_id=null where owner_team_id=$1", t["id"])
+    await p.execute("delete from teams where id=$1", t["id"])
+    return E({"deleted": True, "team_id": str(t["id"])})
 
 
 @app.get("/api/setup/kibana")
@@ -1426,6 +1486,73 @@ async def chat(payload: dict):
 
 
 
+RESET_TABLES = [
+    "signatures", "agent_state", "notifications", "messages", "chat_history", "saved_pivots",
+    "audit_trail", "attck_mappings", "case_teams", "case_acl", "case_members", "case_indicators",
+    "case_timeline", "case_events", "cases", "events", "asom_lines", "assets", "documents",
+    "hunt_sessions", "custom_agents", "password_resets", "login_challenges", "auth_sessions",
+    "accounts", "teams", "enrichment_configs", "app_settings",
+]
+
+
+@app.post("/api/admin/reset")
+async def admin_reset(payload: dict):
+    """Factory reset: wipe all operational data and accounts so the setup process starts over."""
+    global migrated
+    p = await P()
+    actor = await require_admin_from_token(p, (payload or {}).get("token", ""))
+    if not actor:
+        return E(None, error="admin required")
+    if (payload or {}).get("confirm") != "REDEPLOY":
+        return E(None, error="confirmation phrase required: send confirm='REDEPLOY'")
+    wiped = []
+    for table in RESET_TABLES:
+        try:
+            await p.execute(f"truncate table {table} cascade")
+            wiped.append(table)
+        except Exception:
+            pass
+    # Re-seed defaults (app settings, CPT/NCPT teams, enrichment configs).
+    migrated = False
+    await migrate_db(p)
+    migrated = True
+    _agent_cycle_params.update({"interval_seconds": 120, "max_concurrent": 4, "enabled": True, "index_pattern": HUNT_INDEXES})
+    return E({"reset": True, "wiped_tables": wiped, "next": "/deployment.html"})
+
+
+@app.get("/api/setup/bootstrap")
+async def setup_bootstrap():
+    """Setup wizard helper: does an admin account exist yet?"""
+    p = await P()
+    admins = await p.fetchval("select count(*) from accounts where privilege_level='admin'")
+    return E({"admin_exists": int(admins or 0) > 0})
+
+
+@app.post("/api/setup/admin")
+async def setup_create_admin(payload: dict):
+    """Create the FIRST admin account during deployment. Only allowed while no admin exists."""
+    p = await P()
+    admins = await p.fetchval("select count(*) from accounts where privilege_level='admin'")
+    if int(admins or 0) > 0 and not await require_admin_from_token(p, (payload or {}).get("token", "")):
+        return E(None, error="an admin account already exists; log in instead")
+    username = (payload.get("username") or "").strip()
+    password = payload.get("password") or ""
+    if not username:
+        return E(None, error="username required")
+    if len(password) < 6:
+        return E(None, error="password must be at least 6 characters")
+    first_name, last_name, display_name = normalize_person_name(payload)
+    r = await p.fetchrow("""
+        insert into accounts(username,display_name,first_name,last_name,privilege_level,service_branch,rank,work_role,skill_level,email,phone,password_hash)
+        values($1,$2,$3,$4,'admin',$5,$6,$7,$8,$9,$10,$11)
+        on conflict(username) do update set privilege_level='admin', display_name=excluded.display_name, first_name=excluded.first_name, last_name=excluded.last_name, service_branch=excluded.service_branch, rank=excluded.rank, work_role=excluded.work_role, skill_level=excluded.skill_level, email=excluded.email, phone=excluded.phone, password_hash=excluded.password_hash, updated_at=now()
+        returning *
+    """, username, display_name, first_name, last_name, payload.get("service_branch", ""), payload.get("rank", ""), payload.get("work_role", "Team Lead"), payload.get("skill_level", "Senior"), payload.get("email", ""), payload.get("phone", ""), hash_password(password))
+    token = secrets.token_urlsafe(32)
+    await p.execute("insert into auth_sessions(token,account_id,expires_at,last_seen_at,current_view) values($1,$2,now()+interval '12 hours',now(),'setup')", token, r["id"])
+    return E({"token": token, "account": account_public(r)})
+
+
 @app.get("/api/admin/overview")
 async def admin_overview(token: str = ""):
     p = await P()
@@ -1482,6 +1609,20 @@ async def agents(include_archived: bool = False):
         ],
         "custom": custom,
     })
+
+
+@app.get("/api/agents/custom")
+async def list_custom_agents(include_archived: bool = False):
+    p = await P()
+    rows = await p.fetch("select * from custom_agents {} order by created_at desc".format("" if include_archived else "where archived_at is null"))
+    event_counts = {r["agent"]: r["count"] for r in await p.fetch("select agent, count(*)::int as count from events group by agent")}
+    out = []
+    for r in rows:
+        d = rd(r)
+        d["status"] = "archived" if d.get("archived_at") else ("enabled" if d.get("enabled") else "disabled")
+        d["event_count"] = event_counts.get(d.get("role_string"), 0)
+        out.append(d)
+    return E(out)
 
 
 @app.post("/api/agents/custom")
@@ -1625,7 +1766,7 @@ async def seed(sid: str, config=None):
         count = 0
         raw = {"query": item["query"], "sample": "not available"}
         try:
-            res = await es_request("GET", "/botsv3-ecs-v2,botsv3-raw,apt29-*,apt3-*,lsass-*,goldensaml-*,log4shell-*/_search", {
+            res = await es_request("GET", "/botsv3-ecs-v2,botsv3-raw,apt29-*,apt3-*,lsass-*,goldensaml-*,log4shell-*/_search?ignore_unavailable=true&allow_no_indices=true", {
                 "size": 1,
                 "query": {"query_string": {"query": item["query"], "default_field": "*"}},
             })
@@ -1634,8 +1775,11 @@ async def seed(sid: str, config=None):
             hits = res.get("hits", {}).get("hits", [])
             if hits:
                 raw = hits[0].get("_source", {})
-        except Exception as exc:
-            raw = {"query": item["query"], "error": str(exc)}
+        except Exception:
+            # No reachable telemetry for this query: do not create an evidence-free alert.
+            continue
+        if count == 0:
+            continue
         evidence = {"title": item["title"], "query": item["query"], "match_count": count, "raw_sample": raw, "fallback_explanation": item["fallback_explanation"]}
         ai = await openrouter_agent_summary(item["agent"], evidence, item["severity"])
         enrichment = item["enrichment"] + [{"label": "Matching Events", "value": str(count), "color": "highlight"}, {"label": "Model", "value": ai.get("model_used", "unknown"), "color": "highlight"}]
@@ -1678,6 +1822,11 @@ async def launch(payload: dict = {}):
         await upsert_setting(p, "kibana", {"url": (kib.get("url") or "").strip()})
     r = await p.fetchrow("insert into hunt_sessions(status,config) values('active',$1) returning *", json.dumps(cfg))
     await seed(str(r["id"]), payload)
+    # Record baseline match counts so the continuous cycle alerts only on NEW telemetry from here on.
+    try:
+        await run_agent_cycle(p, str(r["id"]), baseline_only=True)
+    except Exception:
+        pass
     return E({"session_id": str(r["id"]), "status": "active", "name": r["name"]})
 
 
@@ -1849,7 +1998,7 @@ async def full_text_search(q: str = "", limit: int = 30, token: str = ""):
         es_url = _safe_es_url(settings.elasticsearch_url)
         user = urlparse(es_url).username
         pw = urlparse(es_url).password
-        res = await es_request("POST", "/_search?size=5", body={
+        res = await es_request("POST", "/_search?size=5&ignore_unavailable=true", payload={
             "query": {
                 "multi_match": {
                     "query": q,
@@ -1999,6 +2148,102 @@ async def unread_count(token: str = ""):
     return E({"count": count or 0})
 
 # ═══════════════════════════════════════════════════════════
+# ANALYST SIGNATURES — simple ECS field:value rules that feed the Signature Match Agent
+# ═══════════════════════════════════════════════════════════
+@app.get("/api/signatures")
+async def list_signatures(token: str = ""):
+    p = await P()
+    actor = await session_actor(p, token)
+    if not actor:
+        return E(None, error="login required")
+    rows = await p.fetch("select s.*, a.display_name as creator_display from signatures s left join accounts a on a.id=s.created_by order by s.created_at desc")
+    out = []
+    for r in rows:
+        d = rd(r)
+        d["mine"] = str(r["created_by"]) == str(actor["id"]) if r["created_by"] else False
+        out.append(d)
+    return E(out)
+
+
+@app.post("/api/signatures")
+async def create_signature(payload: dict):
+    p = await P()
+    actor = await session_actor(p, payload.get("token", ""))
+    if not actor:
+        return E(None, error="login required")
+    value = (payload.get("value") or "").strip()
+    if not value:
+        return E(None, error="signature value required (IP, domain, username, hash, or any ECS value)")
+    name = (payload.get("name") or value).strip()[:120]
+    field = (payload.get("field") or "").strip()[:120]
+    severity = payload.get("severity") if payload.get("severity") in ("critical", "high", "medium", "low") else "medium"
+    r = await p.fetchrow(
+        "insert into signatures(name,description,field,value,severity,enabled,created_by,created_by_name) values($1,$2,$3,$4,$5,true,$6,$7) returning *",
+        name, (payload.get("description") or "")[:1000], field, value, severity, actor["id"], actor["display_name"],
+    )
+    # Immediate feedback: how many events match right now. The cycle will alert on this baseline pop too.
+    matches_now = None
+    try:
+        matches_now, _ = await es_agent_search(signature_query(field, value))
+    except Exception:
+        pass
+    return E({**rd(r), "matches_now": matches_now, "mine": True})
+
+
+@app.post("/api/signatures/{sig_id}/enable")
+async def enable_signature(sig_id: str, payload: dict = {}):
+    return await _toggle_signature(sig_id, payload, True)
+
+
+@app.post("/api/signatures/{sig_id}/disable")
+async def disable_signature(sig_id: str, payload: dict = {}):
+    return await _toggle_signature(sig_id, payload, False)
+
+
+async def _toggle_signature(sig_id: str, payload: dict, enabled: bool):
+    p = await P()
+    actor = await session_actor(p, (payload or {}).get("token", ""))
+    if not actor:
+        return E(None, error="login required")
+    s = await p.fetchrow("select * from signatures where id=$1", uuid.UUID(sig_id))
+    if not s:
+        return E(None, error="signature not found")
+    if actor["privilege_level"] != "admin" and str(s["created_by"]) != str(actor["id"]):
+        return E(None, error="only the signature creator or an admin can change it")
+    r = await p.fetchrow("update signatures set enabled=$2, updated_at=now() where id=$1 returning *", s["id"], enabled)
+    return E(rd(r))
+
+
+@app.delete("/api/signatures/{sig_id}")
+async def delete_signature(sig_id: str, token: str = "", payload: dict = {}):
+    p = await P()
+    actor = await session_actor(p, token or (payload or {}).get("token", ""))
+    if not actor:
+        return E(None, error="login required")
+    s = await p.fetchrow("select * from signatures where id=$1", uuid.UUID(sig_id))
+    if not s:
+        return E(None, error="signature not found")
+    if actor["privilege_level"] != "admin" and str(s["created_by"]) != str(actor["id"]):
+        return E(None, error="only the signature creator or an admin can delete it")
+    await p.execute("delete from signatures where id=$1", s["id"])
+    return E({"deleted": True})
+
+
+@app.post("/api/signatures/{sig_id}/test")
+async def test_signature(sig_id: str, payload: dict = {}):
+    p = await P()
+    s = await p.fetchrow("select * from signatures where id=$1", uuid.UUID(sig_id))
+    if not s:
+        return E(None, error="signature not found")
+    query = signature_query(s["field"], s["value"])
+    try:
+        total, sample = await es_agent_search(query)
+        return E({"query": query, "matching_events": total, "sample": sample})
+    except Exception as exc:
+        return E({"query": query, "matching_events": 0}, error=str(exc)[:300])
+
+
+# ═══════════════════════════════════════════════════════════
 # SAVED PIVOTS (KQL/DSL → Kibana)
 # ═══════════════════════════════════════════════════════════
 @app.get("/api/pivots")
@@ -2051,11 +2296,167 @@ async def get_attck(case_id: str, payload: dict = {}):
     return E([rd(r) for r in rows])
 
 # ═══════════════════════════════════════════════════════════
-# CONTINUOUS AGENT CYCLE
+# CONTINUOUS AGENT CYCLE — live delta hunting against Elastic
 # ═══════════════════════════════════════════════════════════
+HUNT_INDEXES = "botsv3-*,apt29-*,apt3-*,lsass-*,goldensaml-*,log4shell-*,spotter-zeek-*,logs-*,winlogbeat-*,filebeat-*,packetbeat-*"
+
+# role_string -> (display name, live Elastic query, default severity)
+AGENT_QUERIES = {
+    "new_domain_agent": ("New Domain Agent", "event.category:dns OR dns.question.name:* OR query.keyword:*", "medium"),
+    "new_external_ip_agent": ("New External IP Agent", "destination.ip:* OR id.resp_h:* OR dest_ip:*", "medium"),
+    "dga_agent": ("DGA Agent", "NXDOMAIN OR dns.response_code:NXDOMAIN", "medium"),
+    "beaconing_agent": ("Beaconing Agent", "event.dataset:*conn* OR zeek.uid:* OR event.module:zeek", "medium"),
+    "ja3_ja4_agent": ("JA3/JA4 Agent", "ja3:* OR tls.client.ja3:* OR event.dataset:*ssl*", "low"),
+    "threat_intel_agent": ("Threat Intel Correlation Agent", "mimikatz OR rundll32.exe OR procdump OR lsass OR kxwn.lock", "high"),
+    "sysmon_process_agent": ("Sysmon Process Anomaly Agent", "event.module:sysmon OR winlog.channel:\"Microsoft-Windows-Sysmon/Operational\" OR process.entity_id:*", "medium"),
+    "windows_logon_agent": ("Windows Logon Anomaly Agent", "event.code:(4624 OR 4625 OR 4648) OR winlog.event_id:(4624 OR 4625 OR 4648)", "medium"),
+    "powershell_agent": ("PowerShell Activity Agent", "powershell OR encodedcommand OR invoke-webrequest OR iex", "high"),
+    "service_account_agent": ("Service Account Activity Agent", "event.code:4769 OR kerberos OR krbtgt", "medium"),
+}
+
+
+def signature_query(field: str, value: str) -> str:
+    value = (value or "").strip()
+    quoted = '"' + value.replace('"', '\\"') + '"'
+    field = (field or "").strip()
+    return f"{field}:{quoted}" if field else quoted
+
+
+async def es_agent_search(query: str, use_simple: bool = False):
+    """Count matching docs across the hunt index patterns and return (total, latest sample)."""
+    pattern = (_agent_cycle_params.get("index_pattern") or HUNT_INDEXES).strip() or HUNT_INDEXES
+    if use_simple:
+        q = {"simple_query_string": {"query": query}}
+    else:
+        q = {"query_string": {"query": query, "default_field": "*"}}
+    body = {"size": 1, "query": q, "sort": [{"@timestamp": {"order": "desc", "unmapped_type": "date"}}], "track_total_hits": True}
+    res = await es_request("GET", f"/{pattern}/_search?ignore_unavailable=true&allow_no_indices=true", body, timeout=15)
+    hits = res.get("hits", {})
+    total = hits.get("total", {})
+    total = total.get("value", 0) if isinstance(total, dict) else int(total or 0)
+    rows = hits.get("hits", [])
+    sample = rows[0].get("_source", {}) if rows else {}
+    return total, sample
+
+
+async def create_agent_event(p, sid, agent_role, agent_name, severity, query, total, delta, sample, extra_tags=None):
+    """Insert a NEW event (unique id) for fresh telemetry matches found by an agent or signature."""
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    event_id = f"EVT-{snake(agent_role).upper().replace('_','-')}-{stamp}-{secrets.token_hex(2).upper()}"
+    title_seed = f"{agent_name}: {delta} new matching event{'s' if delta != 1 else ''}"
+    evidence = {
+        "title": title_seed,
+        "query": query,
+        "new_match_count": delta,
+        "total_match_count": total,
+        "raw_sample": sample,
+        "fallback_explanation": f"{agent_name} detected {delta} new matching events in live Elastic telemetry (total now {total}). Review the latest raw sample and correlate before escalation.",
+    }
+    ai = await openrouter_agent_summary(agent_role, evidence, severity)
+    enrichment = [
+        {"label": "Query", "value": query[:140], "color": "highlight"},
+        {"label": "New Events", "value": str(delta), "color": "danger"},
+        {"label": "Total Matching", "value": str(total), "color": "highlight"},
+        {"label": "Model", "value": ai.get("model_used", "unknown"), "color": "highlight"},
+    ]
+    tags = [{"text": "Live Backend", "type": "intel"}, {"text": "Continuous Hunt", "type": "context"}] + (extra_tags or [])
+    agent_sum = json.dumps({k: ai.get(k, "") for k in ("who", "what", "when", "where", "why", "how") if ai.get(k)})
+    await p.execute(
+        "insert into events(event_id,session_id,agent,severity,title,snippet,explanation,enrichment,tags,recommended_next_question,raw_log_sample,confidence,metadata,agent_summary) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) on conflict(event_id) do nothing",
+        event_id,
+        uuid.UUID(sid),
+        agent_role,
+        severity,
+        ai["title"],
+        f"{delta} new matching events observed by {agent_name}.",
+        ai["explanation"],
+        json.dumps(enrichment),
+        json.dumps(tags),
+        ai["recommended_next_question"],
+        json.dumps(sample, default=str)[:8000],
+        ai["confidence"],
+        json.dumps({"count": total, "new": delta, "query": query, "model_used": ai.get("model_used")}),
+        agent_sum,
+    )
+    return event_id
+
+
+async def run_agent_cycle(p, sid: str, baseline_only: bool = False):
+    """One hunting pass: built-in agents, enabled custom agents, and analyst signatures.
+    Tracks per-agent match totals so NEW data in Elastic produces NEW alerts."""
+    created = []
+    # Built-in agents
+    for role, (name, query, sev) in AGENT_QUERIES.items():
+        try:
+            total, sample = await es_agent_search(query)
+        except Exception:
+            continue
+        prev = await p.fetchval("select last_total from agent_state where agent=$1", role)
+        await p.execute(
+            "insert into agent_state(agent,last_total,last_run_at) values($1,$2,now()) on conflict(agent) do update set last_total=excluded.last_total, last_run_at=now()",
+            role, total,
+        )
+        if prev is None or baseline_only:
+            continue
+        if total > prev:
+            created.append(await create_agent_event(p, sid, role, name, sev, query, total, total - int(prev), sample))
+    # Enabled custom agents
+    for r in await p.fetch("select * from custom_agents where enabled=true and archived_at is null"):
+        focus = (r["detection_focus"] or r["name"] or "").strip()
+        if not focus:
+            continue
+        key = "custom:" + r["role_string"]
+        try:
+            total, sample = await es_agent_search(focus, use_simple=True)
+        except Exception:
+            continue
+        prev = await p.fetchval("select last_total from agent_state where agent=$1", key)
+        await p.execute(
+            "insert into agent_state(agent,last_total,last_run_at) values($1,$2,now()) on conflict(agent) do update set last_total=excluded.last_total, last_run_at=now()",
+            key, total,
+        )
+        await p.execute("update custom_agents set last_run_at=now() where id=$1", r["id"])
+        if prev is None or baseline_only:
+            continue
+        if total > prev:
+            created.append(await create_agent_event(p, sid, r["role_string"], r["name"], r["severity_default"] or "medium", focus, total, total - int(prev), sample))
+            await p.execute("update custom_agents set total_events_generated=coalesce(total_events_generated,0)+1 where id=$1", r["id"])
+    # Analyst signatures: notify the creator when their signature pops
+    for s in await p.fetch("select * from signatures where enabled=true"):
+        query = signature_query(s["field"], s["value"])
+        try:
+            total, sample = await es_agent_search(query)
+        except Exception:
+            continue
+        prev = int(s["last_total"] if s["last_total"] is not None else -1)
+        hit = (prev < 0 and total > 0) or (prev >= 0 and total > prev)
+        await p.execute(
+            "update signatures set last_total=$2, last_run_at=now(), last_hit_at=case when $3 then now() else last_hit_at end, updated_at=now() where id=$1",
+            s["id"], total, hit,
+        )
+        if baseline_only or not hit:
+            continue
+        delta = total if prev < 0 else total - prev
+        agent_name = f"Signature: {s['name']}"
+        tags = [{"text": f"Signature // {s['name']}", "type": "intel"}, {"text": f"Created by {s['created_by_name'] or 'analyst'}", "type": "context"}]
+        event_id = await create_agent_event(p, sid, "signature_agent", agent_name, s["severity"] or "medium", query, total, delta, sample, extra_tags=tags)
+        created.append(event_id)
+        if s["created_by"]:
+            try:
+                await p.execute(
+                    "insert into notifications(recipient_id,n_type,body,event_id) values($1,'signature',$2,$3)",
+                    s["created_by"],
+                    f"Your signature '{s['name']}' popped: {delta} new match{'es' if delta != 1 else ''} (total {total}). Alert {event_id} is yours to triage.",
+                    event_id,
+                )
+            except Exception:
+                pass
+    return created
+
+
 def get_agent_cycle():
     return _agent_cycle_params
-_agent_cycle_params = {"interval_seconds": 120, "max_concurrent": 4, "last_run": 0, "enabled": True}
+_agent_cycle_params = {"interval_seconds": 120, "max_concurrent": 4, "last_run": 0, "enabled": True, "index_pattern": HUNT_INDEXES}
 
 def set_agent_cycle(**kw):
     _agent_cycle_params.update(kw)
@@ -2078,20 +2479,25 @@ async def update_cycle(payload: dict):
         _agent_cycle_params["enabled"] = bool(payload["enabled"])
     if "max_concurrent" in payload:
         _agent_cycle_params["max_concurrent"] = max(1, int(payload["max_concurrent"]))
+    if "index_pattern" in payload:
+        _agent_cycle_params["index_pattern"] = str(payload["index_pattern"]).strip() or HUNT_INDEXES
     return E(_agent_cycle_params)
 
-# Background agent loop: polls active sessions and re-runs agents every N seconds
+# Background agent loop: re-hunts Elastic every N seconds and raises NEW alerts on new data
 async def agent_cycle_loop():
-    """Background task: re-run hunting agents on active sessions"""
+    """Background task: run the live hunting cycle against the most recent active session."""
     while True:
         await asyncio.sleep(get_agent_cycle()["interval_seconds"])
         if not _agent_cycle_params["enabled"]:
             continue
         try:
             p = await P()
-            sessions = await p.fetch("select id from hunt_sessions where status='active'")
-            for s_row in sessions:
-                await seed(str(s_row["id"]))
+            sid = await p.fetchval("select id from hunt_sessions where status='active' order by updated_at desc limit 1")
+            if not sid:
+                continue
+            created = await run_agent_cycle(p, str(sid))
+            if created:
+                print(f"agent_cycle: created {len(created)} new alerts: {created}")
         except Exception as exc:
             print(f"agent_cycle error: {exc}")
             await asyncio.sleep(30)
@@ -2112,7 +2518,7 @@ async def share_case_with_team(case_id: str, payload: dict):
     if not c: return E(None, error="case not found")
     if not await can_access_case(p, c["id"], actor): return E(None, error="access denied")
     # Only creator/admin/commander can share
-    can_share = actor["privilege_level"] == "admin" or "commander" in (actor.get("work_role") or "").lower()
+    can_share = actor["privilege_level"] in ("admin", "commander") or "commander" in (actor.get("work_role") or "").lower()
     if not can_share: return E(None, error="only admins or commanders can share cases with teams")
     team_id = payload.get("team_id")
     if not team_id: return E(None, error="team_id required")

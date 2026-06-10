@@ -2501,6 +2501,30 @@ html, body { height: 100%; }
   </div>
 
   <div class="card">
+    <div class="card-title">Admin Account (Required Before Launch)</div>
+    <div class="step-desc" id="adminAccountStatus" style="margin-bottom:12px">Checking for an existing admin account...</div>
+    <div id="adminAccountForm">
+      <div class="form-row">
+        <div class="form-group" style="flex:1"><label class="form-label">First Name</label><input class="form-input" id="adminFirst" placeholder="Terry"></div>
+        <div class="form-group" style="flex:1"><label class="form-label">Last Name</label><input class="form-input" id="adminLast" placeholder="Smith"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex:1"><label class="form-label">Username</label><input class="form-input" id="adminUser" placeholder="tsmith"></div>
+        <div class="form-group" style="flex:1"><label class="form-label">Password (min 6 chars)</label><input class="form-input" id="adminPass" type="password"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex:1"><label class="form-label">Email (2FA / reset)</label><input class="form-input" id="adminEmail" type="email" placeholder="optional"></div>
+        <div class="form-group" style="flex:1"><label class="form-label">Rank (optional)</label><input class="form-input" id="adminRank" placeholder="CW2"></div>
+      </div>
+      <button class="btn btn-primary" onclick="createSetupAdmin()">Create Admin Account</button>
+    </div>
+    <div class="warn-box" style="margin-top:10px;">
+      <div class="warn-label">Why this is required</div>
+      The operations console enforces analyst / commander / admin privileges. The first admin account is created here, during deployment, so you enter the console already authenticated as admin.
+    </div>
+  </div>
+
+  <div class="card">
     <div class="card-title">Operational Controls</div>
     <div class="toggle-row">
       <div>
@@ -2880,8 +2904,40 @@ async function loadHealth() {
   }
 }
 
+async function checkAdminBootstrap() {
+  try {
+    const d = await api('/api/setup/bootstrap');
+    state.adminExists = !!d.admin_exists;
+  } catch (e) { state.adminExists = false; }
+  const status = document.getElementById('adminAccountStatus');
+  const form = document.getElementById('adminAccountForm');
+  if (state.adminExists) {
+    if (status) { status.textContent = '✓ An admin account exists. You can launch, or create another admin from the ops console.'; status.style.color = 'var(--green)'; }
+    if (form) form.style.display = 'none';
+  } else {
+    if (status) { status.textContent = 'No admin account yet. Create one below — launch is blocked until an admin exists.'; status.style.color = 'var(--amber)'; }
+    if (form) form.style.display = '';
+  }
+}
+async function createSetupAdmin() {
+  const payload = {
+    username: document.getElementById('adminUser')?.value || '',
+    password: document.getElementById('adminPass')?.value || '',
+    first_name: document.getElementById('adminFirst')?.value || '',
+    last_name: document.getElementById('adminLast')?.value || '',
+    email: document.getElementById('adminEmail')?.value || '',
+    rank: document.getElementById('adminRank')?.value || '',
+  };
+  try {
+    const d = await api('/api/setup/admin', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    if (d.token) localStorage.setItem('spotterToken', d.token);
+    state.adminExists = true;
+    await checkAdminBootstrap();
+    alert('Admin account created. You are logged in and can launch the hunt.');
+  } catch (e) { alert('Could not create admin account: ' + e.message); }
+}
 function goTo(n) {
-  if (n === 6) updateReview();
+  if (n === 6) { updateReview(); checkAdminBootstrap(); }
   document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.step-item').forEach((s, i) => {
     s.classList.remove('active','done');
@@ -3061,6 +3117,11 @@ async function handleFiles(files) {
 }
 
 async function launchHunt() {
+  await checkAdminBootstrap();
+  if (!state.adminExists) {
+    alert('Create the admin account first. The operations console requires an admin before launch.');
+    return;
+  }
   const ov = document.getElementById('launchOverlay');
   ov.classList.add('lo-show');
   ['lo1','lo2','lo3','lo4','lo5','lo6'].forEach((id, i) => setTimeout(() => document.getElementById(id).classList.add('los'), 250 + i * 350));

@@ -117,6 +117,28 @@ Seeded CPTs: 100, 101, 150, 151, 152, 153, 154, 155, 156, 200, 201, 400, 401, 60
 
 Seeded NCPTs: 01, 03, 05, 23.
 
+### Role-based views: analyst, commander, admin
+
+Privileges are now `analyst`, `commander`, and `admin`, and they drive the operations console directly:
+
+- **Admin** sees all three surfaces: Analyst View, Commander View, and the Admin console, with a header switcher.
+- **Analyst** sees only the Analyst View (plus self-profile editing).
+- **Commander** sees only the Commander View (plus self-profile editing).
+
+The first admin account is created during deployment (Review & Launch step); launch is blocked until an admin exists.
+
+### Continuous hunting on new data
+
+The agent cycle no longer re-emits a fixed set of findings. Each pass, agents count matching documents in the configured Elastic index patterns and raise a **new alert only when new documents appear** (per-agent baselines are stored in `agent_state`). Alerts are never fabricated: if Elastic is unreachable or a query matches nothing, no event is created. The hunt index pattern and cycle interval are admin-configurable (Admin console → Agent Management).
+
+### Analyst hunt signatures
+
+Analysts can create simple signatures — an optional ECS field (`source.ip`, `dns.question.name`, `user.name`, ...) plus a value — from the Signatures button in the ops toolbar. Signatures feed the built-in **Signature Match Agent**: when new telemetry matches, it raises an alert and sends the creating analyst a notification ("your signature popped"). Agent creation remains admin-only; signatures are analyst-level.
+
+### Redeployment
+
+Admin Tools (ops console) and the Admin console Settings tab include a **Redeploy** action that wipes all operational data — alerts, cases, accounts, teams, signatures, settings — re-seeds defaults, and returns to the deployment wizard to start setup over. It requires typing `REDEPLOY` to confirm.
+
 ### Accounts, roles, and read-only mode
 
 After installation, unauthenticated visitors see a read-only banner:

@@ -135,7 +135,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:1
               </div>
               <div class="form-row">
                 <div class="form-group"><label>Password</label><input id="acctPass" type="password" placeholder="Leave blank to keep"></div>
-                <div class="form-group"><label>Privilege</label><select id="acctPriv"><option value="analyst">Analyst</option><option value="admin">Admin</option></select></div>
+                <div class="form-group"><label>Privilege</label><select id="acctPriv"><option value="analyst">Analyst</option><option value="commander">Commander</option><option value="admin">Admin</option></select></div>
               </div>
               <div class="form-row">
                 <div class="form-group"><label>Email (2FA)</label><input id="acctEmail" type="email"></div>
@@ -309,6 +309,11 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:1
             <div class="form-group"><label>SMS Webhook URL (for SMS 2FA)</label><input id="setSmsUrl" placeholder="https://sms-gateway"></div>
             <button class="btn btn-sm" onclick="saveDeliverySettings()">Save</button>
           </div>
+          <div class="setting-section" style="border-color:var(--red)">
+            <h4 style="color:var(--red)">Danger Zone // Redeploy</h4>
+            <p style="font-family:var(--mono);font-size:10px;color:var(--text-muted);margin-bottom:12px">Nuke everything — alerts, cases, accounts, teams, signatures, settings — and start the setup process over from the deployment wizard.</p>
+            <button class="btn btn-sm btn-danger" onclick="redeployReset()">⟲ Redeploy: Nuke &amp; Restart Setup</button>
+          </div>
         </div>
       </div>
     </div>
@@ -441,8 +446,10 @@ async function saveAccount(){
 }
 async function deleteAccount(id){
   if(!confirm('Delete this account? This is permanent.'))return;
-  await api('/api/accounts/'+id,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:state.token})});
-  await loadAdminAccounts();
+  try{
+    await api('/api/accounts/'+id+'?token='+encodeURIComponent(state.token),{method:'DELETE'});
+  }catch(e){ alert('Delete failed: '+e.message); return; }
+  await Promise.all([loadAdminAccounts(), loadStats()]);
 }
 
 // ============ TEAMS ============
@@ -509,7 +516,9 @@ async function saveTeam(){
 }
 async function deleteTeam(id){
   if(!confirm('Delete this team?'))return;
-  await api('/api/teams/'+id,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:state.token})});
+  try{
+    await api('/api/teams/'+id+'?token='+encodeURIComponent(state.token),{method:'DELETE'});
+  }catch(e){ alert('Delete failed: '+e.message); return; }
   await loadTeams();
 }
 
@@ -556,6 +565,7 @@ async function loadAgentCycle(){
       '<div class="form-group"><label>Max Concurrent</label><input id="cycleMaxConcurrent" value="'+d.max_concurrent+'" type="number" min="1"></div>'+
       '<div class="form-group"><label>Enabled</label><select id="cycleEnabled"><option value="true" '+(d.enabled?'selected':'')+'>Yes</option><option value="false" '+(d.enabled?'':'selected')+'>No</option></select></div>'+
       '</div>'+
+      '<div class="form-group"><label>Hunt Index Pattern (agents alert when NEW docs appear here)</label><input id="cycleIndexPattern" value="'+escapeHtml(d.index_pattern||'')+'"></div>'+
       '<button class="btn btn-sm" onclick="saveAgentCycle()">Save Cycle Config</button>';
     // Custom agents
     const agents=await api('/api/agents/custom').catch(()=>[]);
@@ -568,7 +578,7 @@ async function loadAgentCycle(){
   }catch(e){}
 }
 async function saveAgentCycle(){
-  await api('/api/agents/cycle',{method:'POST',body:JSON.stringify({token:state.token,interval_seconds:parseInt(document.getElementById('cycleInterval')?.value||120),enabled:document.getElementById('cycleEnabled')?.value==='true',max_concurrent:parseInt(document.getElementById('cycleMaxConcurrent')?.value||4)})});
+  await api('/api/agents/cycle',{method:'POST',body:JSON.stringify({token:state.token,interval_seconds:parseInt(document.getElementById('cycleInterval')?.value||120),enabled:document.getElementById('cycleEnabled')?.value==='true',max_concurrent:parseInt(document.getElementById('cycleMaxConcurrent')?.value||4),index_pattern:document.getElementById('cycleIndexPattern')?.value||''})});
   alert('Agent cycle updated');
 }
 async function testCustomAgent(id){ const r=await api('/api/agents/custom/'+id+'/test',{method:'POST'}); alert('Agent test matches: '+(r.match_count||0)); }
@@ -605,6 +615,16 @@ async function saveEnrichmentSettings(){
 async function saveDeliverySettings(){
   await api('/api/setup/config',{method:'POST',body:JSON.stringify({smtp:{url:document.getElementById('setSmtpUrl').value},sms:{webhook_url:document.getElementById('setSmsUrl').value}})});
   alert('Delivery settings saved');
+}
+async function redeployReset(){
+  const phrase=prompt('This wipes ALL data: alerts, cases, accounts, teams, signatures, settings.\nType REDEPLOY to confirm:');
+  if(phrase!=='REDEPLOY') return;
+  try{
+    await api('/api/admin/reset',{method:'POST',body:JSON.stringify({token:state.token,confirm:'REDEPLOY'})});
+    localStorage.removeItem('spotterToken');
+    alert('Reset complete. Restarting the setup process.');
+    location.href='/deployment.html';
+  }catch(e){ alert('Reset failed: '+e.message); }
 }
 
 // ============ LOGIN ============
