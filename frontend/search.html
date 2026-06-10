@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Spotter-Shooter // Search & Directory</title>
+<link rel="icon" type="image/png" href="/static/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;600;700;800&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
@@ -8,7 +9,8 @@
 *{box-sizing:border-box;margin:0;padding:0}body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:100vh}
 /* Header */
 .header{display:flex;align-items:center;justify-content:space-between;padding:0 28px;height:52px;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;top:0;z-index:200}
-.logo{display:flex;align-items:baseline;gap:10px}
+.logo{display:flex;align-items:center;gap:10px}
+.logo-shield{height:28px;filter:drop-shadow(0 0 6px rgba(232,164,39,.35))}
 .logo-mark{font-family:var(--display);font-weight:700;font-size:18px;letter-spacing:.08em;color:var(--amber);text-transform:uppercase}
 .logo-sep{color:var(--text-dim)}.logo-sub{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.12em;text-transform:uppercase}
 .header-actions{display:flex;gap:12px;align-items:center}
@@ -59,7 +61,7 @@
 </style></head>
 <body>
 <header class="header">
-  <div class="logo"><span class="logo-mark">Spotter-Shooter</span><span class="logo-sep"> // </span><span class="logo-sub">Search &amp; Directory</span></div>
+  <div class="logo"><img class="logo-shield" src="/static/logo.png" alt=""><span class="logo-mark">Spotter-Shooter</span><span class="logo-sep"> // </span><span class="logo-sub">Search &amp; Directory</span></div>
   <div class="header-actions">
     <a class="header-btn" href="/operations.html">Ops Console</a>
     <a class="header-btn" href="/admin.html">Admin</a>

@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Spotter-Shooter // Platform</title>
+<link rel="icon" type="image/png" href="/static/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;600;700;800&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
@@ -71,9 +72,29 @@
 
   .logo {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 12px;
   }
+  .logo-shield {
+    height: 34px;
+    filter: drop-shadow(0 0 6px rgba(232,164,39,0.35));
+    animation: shieldGlow 4s ease-in-out infinite;
+  }
+  @keyframes shieldGlow {
+    0%,100% { filter: drop-shadow(0 0 4px rgba(232,164,39,0.25)); }
+    50% { filter: drop-shadow(0 0 10px rgba(232,164,39,0.55)); }
+  }
+  .hero-logo-wrap { position: relative; width: 150px; height: 168px; margin: 0 auto 22px; }
+  .hero-logo { width: 150px; position: relative; z-index: 2; filter: drop-shadow(0 0 20px rgba(232,164,39,0.35)); animation: heroFloat 5s ease-in-out infinite; }
+  .hero-ping, .hero-ping::after {
+    content: ''; position: absolute; inset: -16px;
+    border: 1px solid rgba(232,164,39,0.45); border-radius: 50%;
+    animation: heroPing 3.2s ease-out infinite;
+  }
+  .hero-ping::after { animation-delay: 1.6s; }
+  @keyframes heroPing { 0% { transform: scale(0.72); opacity: 0.85; } 100% { transform: scale(1.55); opacity: 0; } }
+  @keyframes heroFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+  .lo-logo { width: 110px; margin-bottom: 26px; filter: drop-shadow(0 0 22px rgba(232,164,39,0.45)); animation: heroFloat 4s ease-in-out infinite; }
   .logo-mark {
     font-family: var(--display);
     font-weight: 700;
@@ -625,7 +646,10 @@
     padding: 2px 10px;
     border-radius: 2px;
     font-size: 11px;
+    transition: all 0.15s;
   }
+  .index-tag.hunt-idx:hover { border-color: var(--amber); }
+  .index-tag.unsel { opacity: 0.35; text-decoration: line-through; }
 
   /* ── DIVIDER ── */
   .divider {
@@ -1954,6 +1978,7 @@ html, body { height: 100%; }
 <!-- HEADER -->
 <header class="header">
   <div class="logo">
+    <img class="logo-shield" src="/static/logo.png" alt="Spotter-Shooter">
     <span class="logo-mark">Spotter-Shooter</span>
     <span class="logo-sep">//</span>
     <span class="logo-sub">Deployment Console v2.1</span>
@@ -2012,6 +2037,7 @@ html, body { height: 100%; }
 ════════════════════════════════════════ -->
 <div class="step-panel active" id="step-0">
   <div class="hero">
+    <div class="hero-logo-wrap"><div class="hero-ping"></div><img class="hero-logo" src="/static/logo.png" alt="Spotter-Shooter shield"></div>
     <div class="hero-badge">Spotter-Shooter Framework</div>
     <div class="hero-title">Deployment <span>Console</span></div>
     <div class="hero-sub">Guided setup for your AI-driven threat hunting platform. No YAML. No Docker configs. No manual agent prompting.</div>
@@ -2022,11 +2048,11 @@ html, body { height: 100%; }
     <div class="status-grid" id="statusGrid">
       <div class="status-item"><span class="status-name">Postgres</span><span class="status-val checking">Checking...</span></div>
       <div class="status-item"><span class="status-name">Redis</span><span class="status-val checking">Checking...</span></div>
-      <div class="status-item"><span class="status-name">Docling</span><span class="status-val checking">Checking...</span></div>
+      <div class="status-item"><span class="status-name">Elasticsearch</span><span class="status-val checking">Checking...</span></div>
       <div class="status-item"><span class="status-name">Qdrant</span><span class="status-val checking">Checking...</span></div>
       <div class="status-item"><span class="status-name">MinIO</span><span class="status-val checking">Checking...</span></div>
-      <div class="status-item"><span class="status-name">LiteLLM</span><span class="status-val checking">Checking...</span></div>
-      <div class="status-item"><span class="status-name">Zeek Worker</span><span class="status-val checking">Checking...</span></div>
+      <div class="status-item"><span class="status-name">Model Route (OpenRouter)</span><span class="status-val checking">Checking...</span></div>
+      <div class="status-item"><span class="status-name">Zeek</span><span class="status-val checking">Checking...</span></div>
     </div>
   </div>
 
@@ -2135,8 +2161,8 @@ html, body { height: 100%; }
     </div>
     <div class="form-row">
       <div class="form-group">
-        <label class="form-label">Index Pattern</label>
-        <input class="form-input" id="elasticIndexPattern" type="text" placeholder="botsv3-*,apt29-*" value="botsv3-*,apt29-*">
+        <label class="form-label">Index Pattern Override (optional)</label>
+        <input class="form-input" id="elasticIndexPattern" type="text" placeholder="blank = hunt all discovered indices (recommended)" value="">
       </div>
       <div class="form-group">
         <label class="form-label">TLS Verify</label>
@@ -2589,6 +2615,7 @@ html, body { height: 100%; }
 
 <!-- LAUNCH OVERLAY -->
 <div id="launchOverlay">
+  <img class="lo-logo" src="/static/logo.png" alt="">
   <div style="display:flex;flex-direction:column;align-items:flex-start;margin-bottom:28px;">
     <div class="lo-line" id="lo1">Initializing agent runtime...</div>
     <div class="lo-line" id="lo2">Connecting to Elastic telemetry</div>
@@ -3052,6 +3079,14 @@ function readTelemetryForm() {
     index_pattern: document.getElementById('elasticIndexPattern')?.value || ''
   };
 }
+function toggleHuntIndex(el){
+  el.classList.toggle('unsel');
+  const all=[...document.querySelectorAll('.hunt-idx')];
+  const selected=all.filter(x=>!x.classList.contains('unsel')).map(x=>x.dataset.idx);
+  // If everything stays selected, send nothing — the backend then hunts ALL indices, including future ones.
+  state.huntIndexes = (selected.length===all.length) ? (state.telemetry?.indexes||[]).map(x=>x.index) : selected;
+  state.huntIndexesNarrowed = selected.length!==all.length;
+}
 async function testConnection() {
   const r = document.getElementById('connResult');
   r.style.display = 'block';
@@ -3060,10 +3095,12 @@ async function testConnection() {
     const payload = readTelemetryForm();
     const data = await api('/api/setup/telemetry/test', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
     state.telemetry = data;
-    const idx = (data.indexes || []).slice(0, 8).map(x => `<span class="index-tag">${escapeHtml(x.index)} // ${Number(x.docs || 0).toLocaleString()}</span>`).join('');
+    state.huntIndexes = (data.indexes || []).map(x => x.index);
+    const idx = (data.indexes || []).slice(0, 40).map(x => `<span class="index-tag hunt-idx" data-idx="${escapeHtml(x.index)}" onclick="toggleHuntIndex(this)" style="cursor:pointer" title="Click to include/exclude from the hunt">${escapeHtml(x.index)} // ${Number(x.docs || 0).toLocaleString()}</span>`).join('');
     r.innerHTML = `<div class="conn-result-head"><span>✓</span> Connection Successful</div>
       <div class="conn-grid"><div><b>Cluster</b><span>${escapeHtml(data.cluster || 'unknown')}</span></div><div><b>Total Docs</b><span>${Number(data.total_docs || 0).toLocaleString()}</span></div><div><b>Auth</b><span>${escapeHtml(data.auth_mode || 'none')}</span></div></div>
-      <div style="color:var(--text-dim); margin:10px 0 8px;">Found indexes:</div><div class="index-list">${idx || '<span class="index-tag">none</span>'}</div>`;
+      <div style="color:var(--text-dim); margin:10px 0 8px;">Discovered indexes — agents will hunt the highlighted ones (click to exclude):</div><div class="index-list">${idx || '<span class="index-tag">none</span>'}</div>
+      <div style="color:var(--text-muted);font-size:11px;margin-top:8px">New indices added later are hunted automatically unless you set a manual override pattern.</div>`;
   } catch (e) {
     r.innerHTML = `<div class="conn-result-head"><span>!</span> Connection Failed</div><div>${escapeHtml(e.message)}</div>`;
   }
@@ -3128,7 +3165,8 @@ async function launchHunt() {
   try {
     const selectedAgents = [...document.querySelectorAll('.agent-item.selected')].map(x => x.textContent.replace('✓','').trim());
     state.selectedAgentCount = selectedAgents.length;
-    const data = await api('/api/setup/launch', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({telemetry:state.telemetry, model:readModelForm(), agents:selectedAgents, ...readDeploymentConfig()})});
+    const huntSelection = state.huntIndexesNarrowed ? (state.huntIndexes||[]) : [];
+    const data = await api('/api/setup/launch', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({telemetry:{...(state.telemetry||{}), index_pattern:document.getElementById('elasticIndexPattern')?.value||''}, hunt_indexes:huntSelection, model:readModelForm(), agents:selectedAgents, token:localStorage.getItem('spotterToken')||'', ...readDeploymentConfig()})});
     state.sessionId = data.session_id;
     const agentBadge = document.getElementById('agentStackBadge');
     const agentText = document.getElementById('agentStackText');

@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Spotter-Shooter // Admin Console</title>
+<link rel="icon" type="image/png" href="/static/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;600;700;800&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
@@ -9,7 +10,9 @@
 body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:100vh}
 /* Header */
 .header{display:flex;align-items:center;justify-content:space-between;padding:0 28px;height:52px;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;top:0;z-index:200}
-.logo{display:flex;align-items:baseline;gap:10px}
+.logo{display:flex;align-items:center;gap:10px}
+.logo-shield{height:30px;filter:drop-shadow(0 0 6px rgba(232,164,39,.35));animation:shieldGlow 4s ease-in-out infinite}
+@keyframes shieldGlow{0%,100%{filter:drop-shadow(0 0 4px rgba(232,164,39,.25))}50%{filter:drop-shadow(0 0 10px rgba(232,164,39,.55))}}
 .logo-mark{font-family:var(--display);font-weight:700;font-size:18px;letter-spacing:.08em;color:var(--amber);text-transform:uppercase}
 .logo-sep{color:var(--text-dim)}
 .logo-sub{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.12em;text-transform:uppercase}
@@ -80,6 +83,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:1
 
 <header class="header">
   <div class="logo">
+    <img class="logo-shield" src="/static/logo.png" alt="Spotter-Shooter">
     <span class="logo-mark">Spotter-Shooter</span>
     <span class="logo-sep"> // </span>
     <span class="logo-sub">Admin Console</span>
@@ -565,7 +569,8 @@ async function loadAgentCycle(){
       '<div class="form-group"><label>Max Concurrent</label><input id="cycleMaxConcurrent" value="'+d.max_concurrent+'" type="number" min="1"></div>'+
       '<div class="form-group"><label>Enabled</label><select id="cycleEnabled"><option value="true" '+(d.enabled?'selected':'')+'>Yes</option><option value="false" '+(d.enabled?'':'selected')+'>No</option></select></div>'+
       '</div>'+
-      '<div class="form-group"><label>Hunt Index Pattern (agents alert when NEW docs appear here)</label><input id="cycleIndexPattern" value="'+escapeHtml(d.index_pattern||'')+'"></div>'+
+      '<div class="form-group"><label>Hunt Index Pattern (agents alert when NEW docs appear here; *,-.* = all non-system indices)</label><input id="cycleIndexPattern" value="'+escapeHtml(d.index_pattern||'')+'"></div>'+
+      '<div style="font-family:var(--mono);font-size:10px;color:'+(d.last_cycle_at?'var(--green)':'var(--text-muted)')+';margin-bottom:10px">Last hunt cycle: '+(d.last_cycle_at?compactTime(d.last_cycle_at):'has not run yet')+'</div>'+
       '<button class="btn btn-sm" onclick="saveAgentCycle()">Save Cycle Config</button>';
     // Custom agents
     const agents=await api('/api/agents/custom').catch(()=>[]);

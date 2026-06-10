@@ -105,6 +105,7 @@ async def migrate_db(db):
         "create table if not exists chat_history (id uuid primary key default gen_random_uuid(), token text not null, role text not null default 'analyst', seq int not null default 0, message text not null, answer text not null, created_at timestamptz default now())",
         "create table if not exists signatures (id uuid primary key default gen_random_uuid(), name text not null, description text default '', field text default '', value text not null, severity text default 'medium', enabled boolean default true, created_by uuid references accounts(id) on delete cascade, created_by_name text default '', last_total bigint default -1, last_run_at timestamptz, last_hit_at timestamptz, created_at timestamptz default now(), updated_at timestamptz default now())",
         "create table if not exists agent_state (agent text primary key, last_total bigint default -1, last_run_at timestamptz, details jsonb default '{}'::jsonb)",
+        "create table if not exists failed_logins (id uuid primary key default gen_random_uuid(), account_id uuid references accounts(id) on delete cascade, username text default '', created_at timestamptz default now())",
         """insert into teams(team_type,number,name) values ('CPT','100','100 Cyber Protection Team'),('CPT','101','101 Cyber Protection Team'),('CPT','150','150 Cyber Protection Team'),('CPT','151','151 Cyber Protection Team'),('CPT','152','152 Cyber Protection Team'),('CPT','153','153 Cyber Protection Team'),('CPT','154','154 Cyber Protection Team'),('CPT','155','155 Cyber Protection Team'),('CPT','156','156 Cyber Protection Team'),('CPT','200','200 Cyber Protection Team'),('CPT','201','201 Cyber Protection Team'),('CPT','400','400 Cyber Protection Team'),('CPT','401','401 Cyber Protection Team'),('CPT','600','600 Cyber Protection Team'),('CPT','503','503 Cyber Protection Team'),('NCPT','01','01 National Cyber Protection Team'),('NCPT','03','03 National Cyber Protection Team'),('NCPT','05','05 National Cyber Protection Team'),('NCPT','23','23 National Cyber Protection Team') on conflict(number) do nothing""",
     ]
     async with db.acquire() as conn:
@@ -201,6 +202,17 @@ async def get_setting(p, key: str, default=None):
 
 async def upsert_setting(p, key: str, value: dict):
     return await p.fetchrow("insert into app_settings(key,value,updated_at) values($1,$2::jsonb,now()) on conflict(key) do update set value=excluded.value, updated_at=now() returning *", key, json.dumps(value))
+
+
+async def audit(p, actor_id, action: str, target_type: str = "", target_id: str = "", details: dict = None):
+    """Best-effort server-side audit entry; never blocks the calling action."""
+    try:
+        await p.execute(
+            "insert into audit_trail(actor_id,action,target_type,target_id,details) values($1,$2,$3,$4,$5)",
+            actor_id, action, target_type, str(target_id or ""), json.dumps(details or {}),
+        )
+    except Exception:
+        pass
 
 
 async def security_config(p):
@@ -402,6 +414,23 @@ async def openrouter_agent_summary(agent: str, evidence: dict, severity: str = "
         }
 
 
+@app.get("/static/{filename}")
+async def static_files(filename: str):
+    safe = Path(filename).name
+    path = FRONTEND / "static" / safe
+    if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".svg", ".gif", ".ico", ".webp"} and path.exists():
+        return FileResponse(path)
+    return HTMLResponse(status_code=404, content="not found")
+
+
+@app.get("/favicon.ico")
+async def favicon():
+    path = FRONTEND / "static" / "logo.png"
+    if path.exists():
+        return FileResponse(path)
+    return HTMLResponse(status_code=404, content="not found")
+
+
 @app.get("/admin.html")
 async def admin():
     return FileResponse(FRONTEND / "admin.html")
@@ -441,8 +470,8 @@ async def health():
         "Elasticsearch": es_ok,
         "Qdrant": await ok_http(settings.qdrant_url + "/healthz"),
         "MinIO": await ok_http("http://" + settings.minio_endpoint + "/minio/health/live"),
-        "LiteLLM": True,
-        "Zeek Worker": True,
+        "Model Route (OpenRouter)": bool(settings.openrouter_api_key),
+        "Zeek": bool(shutil.which("zeek") or Path("/var/run/docker.sock").exists()),
     }
     return E({"status": "green" if all(s.values()) else "degraded", "services": s})
 
@@ -646,8 +675,12 @@ async def telemetry(payload: dict):
     password = payload.get("password") or payload.get("api_key") or None
     try:
         info = await es_request("GET", "/", base_url=configured, username=username, password=password)
-        cat = await es_request("GET", "/_cat/indices/botsv3-*,apt29-*,apt3-*,lsass-*,goldensaml-*,log4shell-*?format=json&h=index,docs.count,health", base_url=configured, username=username, password=password)
-        indexes = [{"index": x.get("index"), "docs": int(x.get("docs.count") or 0), "health": x.get("health")} for x in cat]
+        # Discover ALL indices; hide system/internal ones (dot-prefixed) from the operator.
+        cat = await es_request("GET", "/_cat/indices?format=json&h=index,docs.count,health", base_url=configured, username=username, password=password)
+        indexes = sorted(
+            [{"index": x.get("index"), "docs": int(x.get("docs.count") or 0), "health": x.get("health")} for x in cat if x.get("index") and not x["index"].startswith(".")],
+            key=lambda x: -x["docs"],
+        )
         return E({
             "connected": True,
             "cluster": info.get("cluster_name"),
@@ -739,10 +772,13 @@ async def model(payload: dict):
 @app.get("/api/setup/data")
 async def data():
     try:
-        cat = await es_request("GET", "/_cat/indices/botsv3-*,apt29-*,apt3-*,lsass-*,goldensaml-*,log4shell-*?format=json&h=index,docs.count,health")
-        sources = [{"name": x.get("index"), "count": int(x.get("docs.count") or 0), "health": x.get("health")} for x in cat]
+        cat = await es_request("GET", "/_cat/indices?format=json&h=index,docs.count,health")
+        sources = sorted(
+            [{"name": x.get("index"), "count": int(x.get("docs.count") or 0), "health": x.get("health")} for x in cat if x.get("index") and not x["index"].startswith(".")],
+            key=lambda x: -x["count"],
+        )
         total = sum(s["count"] for s in sources)
-        return E({"sources": sources, "total_docs": total, "recommendation": "BOTSv3 + APT/LSASS/Log4Shell telemetry detected. Start with network agents, then add host agents for confirmed pivots."})
+        return E({"sources": sources, "total_docs": total, "recommendation": "Telemetry detected. Start with network agents, then add host agents for confirmed pivots."})
     except Exception as exc:
         return E({"sources": [], "total_docs": 0, "recommendation": "No telemetry source reachable."}, error=str(exc))
 
@@ -785,8 +821,13 @@ async def events(limit: int = 100, session_id: Optional[str] = None):
 
 
 @app.patch("/api/events/{event_id}/dismiss")
-async def dismiss(event_id: str):
-    await (await P()).execute("update events set status='dismissed', updated_at=now() where event_id=$1", event_id)
+async def dismiss(event_id: str, token: str = ""):
+    p = await P()
+    actor = await session_actor(p, token)
+    if not actor:
+        return E(None, error="login required to triage alerts")
+    await p.execute("update events set status='dismissed', updated_at=now() where event_id=$1", event_id)
+    await audit(p, actor["id"], "alert_dismissed", "event", event_id)
     return E({"event_id": event_id, "status": "dismissed"})
 
 
@@ -857,8 +898,13 @@ async def build_case_final(p, case_uuid):
 @app.patch("/api/events/{event_id}/escalate")
 async def escalate(event_id: str, payload: dict = {}):
     p = await P()
-    actor_id = payload.get("actor_id") if payload else None
-    actor = await p.fetchrow("select * from accounts where id=$1", uuid.UUID(actor_id)) if actor_id else await ensure_default_account(p)
+    # Attribution: the logged-in session wins; explicit actor_id only as a fallback for API callers.
+    actor = await session_actor(p, (payload or {}).get("token", ""))
+    if not actor:
+        actor_id = payload.get("actor_id") if payload else None
+        actor = await p.fetchrow("select * from accounts where id=$1", uuid.UUID(actor_id)) if actor_id else None
+    if not actor:
+        return E(None, error="login required to escalate alerts")
     e = await p.fetchrow("select * from events where event_id=$1", event_id)
     cid = "CASE-" + event_id.split("-")[-1]
     if not e:
@@ -876,6 +922,7 @@ async def escalate(event_id: str, payload: dict = {}):
     for ind in extract_indicators_from_event(e):
         await p.execute("insert into case_indicators(case_id,indicator_type,value,source,description,created_by) values($1,$2,$3,'alert',$4,$5) on conflict(case_id,indicator_type,value) do nothing", case["id"], ind["type"], ind["value"], event_id, actor["id"])
     await build_case_final(p, case["id"])
+    await audit(p, actor["id"], "alert_escalated", "case", case["case_id"], {"event_id": event_id})
     return E({"case_id": case["case_id"], "case_uuid": str(case["id"]), "status": "open"})
 
 
@@ -1012,6 +1059,14 @@ async def finalize_case(case_id: str, payload: dict = {}):
     if fields:
         vals.append(c["id"])
         await p.execute(f"update cases set {', '.join(fields)}, updated_at=now() where id=${len(vals)}", *vals)
+    if "status" in payload and payload["status"] != c["status"]:
+        actor = await session_actor(p, payload.get("token", ""))
+        await p.execute(
+            "insert into case_timeline(case_id,entry_type,title,body,actor_id,actor_name) values($1,'status',$2,$3,$4,$5)",
+            c["id"], f"Status changed to {payload['status']}", f"{c['status']} → {payload['status']}",
+            actor["id"] if actor else None, actor["display_name"] if actor else "system",
+        )
+        await audit(p, actor["id"] if actor else None, "case_status_changed", "case", c["case_id"], {"from": c["status"], "to": payload["status"]})
     final = await build_case_final(p, c["id"])
     return E({"case_id": c["case_id"], "final_output": final})
 
@@ -1039,8 +1094,18 @@ async def auth_login(payload: dict):
     password = payload.get("password", "")
     method = payload.get("method", "email")
     a = await p.fetchrow("select * from accounts where username=$1 or email=$1 or phone=$1", username)
+    if a:
+        recent_failures = await p.fetchval("select count(*) from failed_logins where account_id=$1 and created_at>now()-interval '10 minutes'", a["id"])
+        if int(recent_failures or 0) >= 5:
+            await audit(p, a["id"], "login_locked", "account", a["username"])
+            return E(None, error="account temporarily locked after repeated failed logins; try again in 10 minutes")
     if not a or not verify_password(password, a["password_hash"]):
+        if a:
+            await p.execute("insert into failed_logins(account_id,username) values($1,$2)", a["id"], a["username"])
+            await audit(p, a["id"], "login_failed", "account", a["username"])
         return E(None, error="invalid username/password")
+    await p.execute("delete from failed_logins where account_id=$1", a["id"])
+    await audit(p, a["id"], "login_success", "account", a["username"])
     sec = await security_config(p)
     if not sec["twofa_required"]:
         token = secrets.token_urlsafe(32)
@@ -1190,6 +1255,7 @@ async def delete_account(account_id: str, token: str = ""):
         except Exception:
             pass
     await p.execute("delete from accounts where id=$1", a["id"])
+    await audit(p, actor["id"], "account_deleted", "account", a["username"], {"account_id": str(a["id"])})
     return E({"deleted": True, "account_id": str(a["id"]), "username": a["username"]})
 
 
@@ -1245,6 +1311,7 @@ async def delete_team(team_id: str, token: str = "", payload: dict = {}):
     await p.execute("update accounts set team_id=null where team_id=$1", t["id"])
     await p.execute("update cases set owner_team_id=null where owner_team_id=$1", t["id"])
     await p.execute("delete from teams where id=$1", t["id"])
+    await audit(p, actor["id"], "team_deleted", "team", t["number"], {"name": t["name"]})
     return E({"deleted": True, "team_id": str(t["id"])})
 
 
@@ -1344,7 +1411,7 @@ async def list_messages(token: str = "", with_user: str = "", limit: int = 50):
     """Direct messages between accounts."""
     p = await P()
     actor = await get_actor(p, token)
-    sql = "select m.*, a1.display_name as sender_name, a2.display_name as recipient_name from messages m join accounts a1 on a1.id=m.sender_id join accounts a2 on a2.id=m.recipient_id where (m.sender_id=$1 and m.recipient_id=uuid($2)) or (m.sender_id=uuid($2) and m.recipient_id=$1) order by m.created_at asc limit $3"
+    sql = "select m.*, a1.display_name as sender_name, a2.display_name as recipient_name from messages m join accounts a1 on a1.id=m.sender_id join accounts a2 on a2.id=m.recipient_id where (m.sender_id=$1 and m.recipient_id=$2::uuid) or (m.sender_id=$2::uuid and m.recipient_id=$1) order by m.created_at asc limit $3"
     rows = await p.fetch(sql, actor["id"], with_user, limit)
     return E([{"id":str(r["id"]),"sender_name":r["sender_name"],"recipient_name":r["recipient_name"],"body":r["body"],"read_at":ser(r["read_at"]),"created_at":ser(r["created_at"])} for r in rows])
 
@@ -1411,6 +1478,8 @@ async def create_messages_table():
                 ) sub where rn > 20
             )
         """)
+        # Restore persisted hunt configuration (index pattern, interval) across API restarts.
+        await load_hunt_setting(p)
     except: pass
 
 
@@ -1517,6 +1586,8 @@ async def admin_reset(payload: dict):
     await migrate_db(p)
     migrated = True
     _agent_cycle_params.update({"interval_seconds": 120, "max_concurrent": 4, "enabled": True, "index_pattern": HUNT_INDEXES})
+    # The actor's account was just wiped; record the reset with the username in details.
+    await audit(p, None, "platform_reset", "system", "all", {"by_username": actor["username"], "wiped_tables": wiped})
     return E({"reset": True, "wiped_tables": wiped, "next": "/deployment.html"})
 
 
@@ -1550,6 +1621,7 @@ async def setup_create_admin(payload: dict):
     """, username, display_name, first_name, last_name, payload.get("service_branch", ""), payload.get("rank", ""), payload.get("work_role", "Team Lead"), payload.get("skill_level", "Senior"), payload.get("email", ""), payload.get("phone", ""), hash_password(password))
     token = secrets.token_urlsafe(32)
     await p.execute("insert into auth_sessions(token,account_id,expires_at,last_seen_at,current_view) values($1,$2,now()+interval '12 hours',now(),'setup')", token, r["id"])
+    await audit(p, r["id"], "bootstrap_admin_created", "account", r["username"])
     return E({"token": token, "account": account_public(r)})
 
 
@@ -1596,18 +1668,31 @@ async def agents(include_archived: bool = False):
     custom_sql = "select * from custom_agents {} order by created_at desc".format("" if include_archived else "where archived_at is null")
     custom_rows = await p.fetch(custom_sql)
     event_counts = {r["agent"]: r["count"] for r in await p.fetch("select agent, count(*)::int as count from events group by agent")}
+    hunt_state = {r["agent"]: r for r in await p.fetch("select * from agent_state")}
+    sig_last_run = await p.fetchval("select max(last_run_at) from signatures where enabled=true")
     custom = []
     for r in custom_rows:
         d = rd(r)
         d["status"] = "archived" if d.get("archived_at") else ("enabled" if d.get("enabled") else "disabled")
         d["event_count"] = event_counts.get(d.get("role_string"), 0)
+        st = hunt_state.get("custom:" + (d.get("role_string") or ""))
+        d["last_hunt_at"] = ser(st["last_run_at"]) if st else None
+        d["last_match_total"] = int(st["last_total"]) if st else None
         custom.append(d)
+    built_in = []
+    for n, r, t, tier, en in BUILTIN:
+        st = hunt_state.get(r)
+        built_in.append({
+            "name": n, "role_string": r, "telemetry_source": t, "tier": tier, "enabled": en,
+            "status": "enabled" if en else "disabled", "event_count": event_counts.get(r, 0),
+            "last_hunt_at": ser(sig_last_run) if r == "signature_agent" else (ser(st["last_run_at"]) if st else None),
+            "last_match_total": int(st["last_total"]) if st else None,
+        })
+    last_cycle_at = await p.fetchval("select max(last_run_at) from agent_state")
     return E({
-        "built_in": [
-            {"name": n, "role_string": r, "telemetry_source": t, "tier": tier, "enabled": en, "status": "enabled" if en else "disabled", "event_count": event_counts.get(r, 0)}
-            for n, r, t, tier, en in BUILTIN
-        ],
+        "built_in": built_in,
         "custom": custom,
+        "cycle": {"enabled": _agent_cycle_params["enabled"], "interval_seconds": _agent_cycle_params["interval_seconds"], "last_cycle_at": ser(last_cycle_at)},
     })
 
 
@@ -1820,6 +1905,12 @@ async def launch(payload: dict = {}):
             sec_cfg["twofa_required"] = bool(sec.get("twofa_required"))
         await upsert_setting(p, "security", sec_cfg)
         await upsert_setting(p, "kibana", {"url": (kib.get("url") or "").strip()})
+    # Hunt scope: explicit index selection from setup wins; then a manual pattern; else all non-system indices.
+    tel = cfg.get("telemetry") or {}
+    hunt_list = cfg.get("hunt_indexes") or tel.get("hunt_indexes") or []
+    pattern = ",".join(x for x in hunt_list if x)[:2000] if hunt_list else (tel.get("index_pattern") or "").strip()
+    _agent_cycle_params["index_pattern"] = pattern or HUNT_INDEXES
+    await save_hunt_setting(p)
     r = await p.fetchrow("insert into hunt_sessions(status,config) values('active',$1) returning *", json.dumps(cfg))
     await seed(str(r["id"]), payload)
     # Record baseline match counts so the continuous cycle alerts only on NEW telemetry from here on.
@@ -2187,6 +2278,7 @@ async def create_signature(payload: dict):
         matches_now, _ = await es_agent_search(signature_query(field, value))
     except Exception:
         pass
+    await audit(p, actor["id"], "signature_created", "signature", name, {"field": field, "value": value, "severity": severity})
     return E({**rd(r), "matches_now": matches_now, "mine": True})
 
 
@@ -2226,6 +2318,7 @@ async def delete_signature(sig_id: str, token: str = "", payload: dict = {}):
     if actor["privilege_level"] != "admin" and str(s["created_by"]) != str(actor["id"]):
         return E(None, error="only the signature creator or an admin can delete it")
     await p.execute("delete from signatures where id=$1", s["id"])
+    await audit(p, actor["id"], "signature_deleted", "signature", s["name"], {"field": s["field"], "value": s["value"]})
     return E({"deleted": True})
 
 
@@ -2298,7 +2391,9 @@ async def get_attck(case_id: str, payload: dict = {}):
 # ═══════════════════════════════════════════════════════════
 # CONTINUOUS AGENT CYCLE — live delta hunting against Elastic
 # ═══════════════════════════════════════════════════════════
-HUNT_INDEXES = "botsv3-*,apt29-*,apt3-*,lsass-*,goldensaml-*,log4shell-*,spotter-zeek-*,logs-*,winlogbeat-*,filebeat-*,packetbeat-*"
+# Default: hunt EVERY non-system index so newly loaded data is found without reconfiguration.
+# Operators can narrow this during setup (index selection) or in Admin → Agent Management.
+HUNT_INDEXES = "*,-.*"
 
 # role_string -> (display name, live Elastic query, default severity)
 AGENT_QUERIES = {
@@ -2463,10 +2558,12 @@ def set_agent_cycle(**kw):
 
 @app.get("/api/agents/cycle")
 async def get_cycle(token: str = ""):
-    actor = await get_actor(await P(), token)
+    p = await P()
+    actor = await get_actor(p, token)
     if actor["privilege_level"] != "admin":
         return E(None, error="admin required")
-    return E(_agent_cycle_params)
+    last_cycle_at = await p.fetchval("select max(last_run_at) from agent_state")
+    return E({**_agent_cycle_params, "last_cycle_at": ser(last_cycle_at)})
 
 @app.post("/api/agents/cycle")
 async def update_cycle(payload: dict):
@@ -2481,7 +2578,26 @@ async def update_cycle(payload: dict):
         _agent_cycle_params["max_concurrent"] = max(1, int(payload["max_concurrent"]))
     if "index_pattern" in payload:
         _agent_cycle_params["index_pattern"] = str(payload["index_pattern"]).strip() or HUNT_INDEXES
+    await save_hunt_setting(await P())
     return E(_agent_cycle_params)
+
+
+async def save_hunt_setting(p):
+    await upsert_setting(p, "hunt", {
+        "index_pattern": _agent_cycle_params["index_pattern"],
+        "interval_seconds": _agent_cycle_params["interval_seconds"],
+        "enabled": _agent_cycle_params["enabled"],
+    })
+
+
+async def load_hunt_setting(p):
+    cfg = await get_setting(p, "hunt", {})
+    if cfg.get("index_pattern"):
+        _agent_cycle_params["index_pattern"] = cfg["index_pattern"]
+    if cfg.get("interval_seconds"):
+        _agent_cycle_params["interval_seconds"] = max(30, int(cfg["interval_seconds"]))
+    if "enabled" in cfg:
+        _agent_cycle_params["enabled"] = bool(cfg["enabled"])
 
 # Background agent loop: re-hunts Elastic every N seconds and raises NEW alerts on new data
 async def agent_cycle_loop():

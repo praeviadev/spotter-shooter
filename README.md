@@ -129,11 +129,26 @@ The first admin account is created during deployment (Review & Launch step); lau
 
 ### Continuous hunting on new data
 
-The agent cycle no longer re-emits a fixed set of findings. Each pass, agents count matching documents in the configured Elastic index patterns and raise a **new alert only when new documents appear** (per-agent baselines are stored in `agent_state`). Alerts are never fabricated: if Elastic is unreachable or a query matches nothing, no event is created. The hunt index pattern and cycle interval are admin-configurable (Admin console → Agent Management).
+The agent cycle no longer re-emits a fixed set of findings. Each pass, agents count matching documents in the configured Elastic index patterns and raise a **new alert only when new documents appear** (per-agent baselines are stored in `agent_state`). Alerts are never fabricated: if Elastic is unreachable or a query matches nothing, no event is created.
+
+**Index scope:** by default agents hunt **all non-system indices** (`*,-.*`), so data loaded under a brand-new index name is picked up automatically. During setup, the telemetry test discovers every index in the cluster and lets the operator click indices in or out of scope; a manual override pattern is also supported. The choice persists in `app_settings` across API restarts and is editable later in Admin console → Agent Management.
+
+The operations console is **live**: it polls for new findings every 15 seconds, slides new alerts into the list with a toast notification, and shows an "Agents Hunting / Idle / Paused" badge in the header driven by real last-cycle timestamps.
 
 ### Analyst hunt signatures
 
 Analysts can create simple signatures — an optional ECS field (`source.ip`, `dns.question.name`, `user.name`, ...) plus a value — from the Signatures button in the ops toolbar. Signatures feed the built-in **Signature Match Agent**: when new telemetry matches, it raises an alert and sends the creating analyst a notification ("your signature popped"). Agent creation remains admin-only; signatures are analyst-level.
+
+### Hardening and operator experience
+
+- **Triage requires login** — anonymous visitors cannot dismiss or escalate alerts, and every triage action is attributed to the logged-in analyst (not a default account).
+- **Login lockout** — five failed attempts in ten minutes temporarily lock the account; failures and lockouts are audited.
+- **Server-side audit trail** — logins, account/team/signature changes, escalations, dismissals, case status changes, launches, and platform resets are recorded automatically (Admin console → Audit Trail).
+- **Case status workflow** — open → triage → review → closed, changeable from the case workbench with an automatic timeline entry.
+- **Alert status filters** — Active / Escalated / Dismissed / All chips; dismissed alerts are hidden by default.
+- **Kibana deep links** — the Kibana button on an alert opens Discover with that agent's query prefilled.
+- **Honest health checks** — the deployment console reports real Elasticsearch reachability, model-route configuration, and Zeek availability instead of hardcoded values.
+- **Unit branding** — the shield insignia appears across the consoles (header, login, empty states, launch overlay) with subtle motion design.
 
 ### Redeployment
 
