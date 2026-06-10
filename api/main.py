@@ -1242,22 +1242,27 @@ async def online_users():
 def chatbot_query_from_question(question: str) -> str:
     q = (question or "").lower()
     terms = []
-    if any(x in q for x in ["powershell", "encoded", "iex", "script"]): terms.append("powershell OR encodedcommand OR iex")
-    if any(x in q for x in ["rundll32", "dll"]): terms.append("rundll32.exe")
+    if any(x in q for x in ["powershell", "encoded", "iex", "script"]): terms.append("powershell OR encodedcommand OR iex OR process.command_line:powershell*")
+    if any(x in q for x in ["rundll32", "dll"]): terms.append("rundll32.exe OR process.executable:*rundll32.exe")
     if any(x in q for x in ["mimikatz", "lsass", "credential", "creds", "dump"]): terms.append("mimikatz OR lsass OR procdump OR comsvcs")
-    if any(x in q for x in ["ssh", "password", "login", "auth"]): terms.append("sshd OR failed password OR accepted password OR logon")
-    if any(x in q for x in ["aws", "cloud", "cloudtrail", "guardduty"]): terms.append("aws OR cloudtrail OR guardduty")
+    if any(x in q for x in ["ssh", "password", "login", "auth"]): terms.append("sshd OR failed password OR accepted password OR logon OR event.category:authentication")
+    if any(x in q for x in ["aws", "cloud", "cloudtrail", "guardduty", "s3", "iam"]): terms.append("event.dataset:botsv3.cloudtrail OR cloud.provider:aws OR event.provider:*.amazonaws.com OR guardduty")
+    if any(x in q for x in ["zeek", "bro", "conn", "ssl", "ja3"]): terms.append("event.module:zeek OR event.dataset:*zeek* OR zeek.uid:*")
+    if any(x in q for x in ["dns", "domain", "nxdomain", "query"]): terms.append("event.category:dns OR dns.question.name:* OR dns.response_code:*")
+    if any(x in q for x in ["apache", "http", "web", "uri", "url"]): terms.append("event.dataset:botsv3.apache OR event.dataset:botsv3.web OR http.request.method:*")
+    if any(x in q for x in ["proxy", "wpad", "connect"]): terms.append("event.dataset:botsv3.proxy OR http.request.method:CONNECT OR wpad")
+    if any(x in q for x in ["suricata", "ids", "alert", "signature"]): terms.append("event.module:suricata OR event.dataset:botsv3.suricata OR rule.name:*")
     if any(x in q for x in ["sql", "mysql", "database"]): terms.append("mysql OR SELECT OR CONNECT")
     ips = re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", question or "")
     procs = re.findall(r"\b[a-zA-Z0-9_\-]+\.exe\b", question or "")
     terms.extend(ips + procs)
-    return " OR ".join(f"({t})" for t in terms[:6]) or "powershell OR rundll32.exe OR mimikatz OR sshd OR aws OR mysql"
+    return " OR ".join(f"({t})" for t in terms[:8]) or "powershell OR rundll32.exe OR mimikatz OR sshd OR event.dataset:botsv3.cloudtrail OR mysql"
 
 
 async def chatbot_elastic_context(question: str) -> dict:
     query = chatbot_query_from_question(question)
     try:
-        res = await es_request("GET", "/botsv3-raw,apt29-*,apt3-*,lsass-*,goldensaml-*,log4shell-*,spotter-zeek-*/_search", {
+        res = await es_request("GET", "/botsv3-ecs-v2,botsv3-raw,apt29-*,apt3-*,lsass-*,goldensaml-*,log4shell-*,spotter-zeek-*/_search", {
             "size": 5,
             "query": {"query_string": {"query": query, "default_field": "*"}},
             "sort": [{"@timestamp": {"order": "desc", "unmapped_type": "date"}}],
@@ -1389,7 +1394,8 @@ async def chat(payload: dict):
         "Answer directly, give concrete next steps. Do not be interrogative. "
         "Structure: direct answer, then recommended action. Keep it concise. "
         "Your knowledge comes ONLY from the context provided (active events, open cases, and Elastic search results). "
-        "If a question asks about something outside your available data — explicitly state 'I don't have logs covering that in the current data scope' or 'I'm not querying live Elastic for that pattern right now' rather than inventing findings. "
+        "Critical: if elastic_snapshot.total is greater than zero, matching live Elastic logs DO exist; summarize the matching samples and never claim there is no data for that pattern. "
+        "If elastic_snapshot.total is zero and a question asks about something outside your available data — explicitly state 'I don't have logs covering that in the current data scope' or 'I'm not querying live Elastic for that pattern right now' rather than inventing findings. "
         "If the user asks you to search for something but you don't want to or shouldn't — tell them clearly: 'That's outside my current query scope' or 'I'm not set up to search for that pattern'."
     )
 
@@ -1406,10 +1412,13 @@ async def chat(payload: dict):
             r.raise_for_status()
             answer = r.json()["choices"][0]["message"]["content"].strip()
         model_used = settings.openrouter_model.split("/")[-1]
+        # Guardrail: if live Elastic returned matches, never let the model claim there is no data.
+        if elastic.get("total", 0) and any(phrase in answer.lower() for phrase in ["don't have logs", "no logs", "no data", "current data scope"]):
+            answer = f"Live Elastic has {elastic.get('total')} matching events for this query. Review the returned samples and pivot on the ECS fields shown in the Elastic snapshot."
         # Store in history
         if token:
             await p.execute("insert into chat_history(token,role,seq,message,answer) values($1,$2,$3,$4,$5)", token, role, seq, question[:2000], answer[:3000])
-        return E({"answer": answer, "model": model_used, "role": role})
+        return E({"answer": answer, "model": model_used, "role": role, "elastic": elastic})
 
     # Deterministic fallback when no OpenRouter
     fallback_cmd = "Review open cases for unresolved items. Focus on affected assets, decisions needed, and resource allocation." if role == "commander" else "Review highest-severity open alerts, confirm raw evidence, and update the case timeline."
@@ -1544,7 +1553,7 @@ async def test_agent(agent_id: str):
         elif "powershell" in focus.lower():
             query = "powershell OR encodedcommand OR invoke-webrequest"
     try:
-        hits = await es_request("GET", "/botsv3-raw,apt29-*,apt3-*,lsass-*/_search", {"size": 1, "query": {"query_string": {"query": query, "default_field": "*"}}})
+        hits = await es_request("GET", "/botsv3-ecs-v2,botsv3-raw,apt29-*,apt3-*,lsass-*/_search", {"size": 1, "query": {"query_string": {"query": query, "default_field": "*"}}})
         count = hits.get("hits", {}).get("total", {}).get("value", 0)
         sample = hits.get("hits", {}).get("hits", [{}])[0].get("_source", {}) if count else {}
     except Exception:
@@ -1616,7 +1625,7 @@ async def seed(sid: str, config=None):
         count = 0
         raw = {"query": item["query"], "sample": "not available"}
         try:
-            res = await es_request("GET", "/botsv3-raw,apt29-*,apt3-*,lsass-*,goldensaml-*,log4shell-*/_search", {
+            res = await es_request("GET", "/botsv3-ecs-v2,botsv3-raw,apt29-*,apt3-*,lsass-*,goldensaml-*,log4shell-*/_search", {
                 "size": 1,
                 "query": {"query_string": {"query": item["query"], "default_field": "*"}},
             })
